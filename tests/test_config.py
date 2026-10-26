@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 import json
+from dataclasses import replace
 
 from nightlight import config
 from nightlight.config import Anchor, AppConfig, BrightnessScheduleConfig, DisplayPrefs, GeneralConfig, Mode, NightLightConfig, SchedulePoint
@@ -17,6 +18,29 @@ def test_round_trip(tmp_path):
     )
     config.save(original, path)
     assert config.load(path) == original
+
+
+def test_what_a_newer_version_saved_is_kept_when_an_older_one_saves(tmp_path):
+    """Going back a version and forward again keeps the newer version's
+    settings, shortcuts among them (LightBulb #202 lost hotkeys this way)."""
+    path = tmp_path / "settings.json"
+    newer = {
+        "version": 99,
+        "shortcuts_v2": [{"keys": "Ctrl+Alt+Up"}],  # a section this version doesn't know
+        "general": {"start_minimized": True, "a_newer_setting": 3},
+        "displays": {"GONE": {"name": "Old"}},
+    }
+    path.write_text(json.dumps(newer))
+    loaded = config.load(path)
+    config.save(replace(loaded, general=replace(loaded.general, start_minimized=False), displays=()), path)
+    saved = json.loads(path.read_text())
+    assert saved["shortcuts_v2"] == [{"keys": "Ctrl+Alt+Up"}]
+    assert saved["general"]["a_newer_setting"] == 3 and saved["general"]["start_minimized"] is False  # known ones: this version's
+    assert saved["displays"] == {}  # a display's names and hiding are this version's to remove
+    assert saved["version"] == 99  # still the newer version's file: kept again at the next save
+    config.save(config.load(path), path)
+    assert json.loads(path.read_text())["shortcuts_v2"] == [{"keys": "Ctrl+Alt+Up"}]
+    assert config.load(path).general.start_minimized is False
 
 
 def test_corrupt_file_gives_defaults(tmp_path):

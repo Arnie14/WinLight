@@ -96,6 +96,11 @@ class KeyRecorder(QLineEdit):
         self.setAccessibleName("Shortcut keys")
 
     def event(self, event) -> bool:
+        # Every key comes here first, as in QKeySequenceEdit: otherwise a
+        # button's Alt+letter or a window's shortcut takes the keys being recorded.
+        if event.type() == QEvent.Type.ShortcutOverride:
+            event.accept()
+            return True
         # Tab and Shift+Tab would move the focus away instead of being recorded.
         if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
             self.keyPressEvent(event)
@@ -156,7 +161,9 @@ class ShortcutRow(QWidget):
             combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.set_displays(displays, shortcut.display)
         self.remove = QToolButton(text="✕", toolTip="Remove this shortcut", autoRaise=True)
-        self.remove.clicked.connect(lambda: self.removeRequested.emit(self))
+        # A bound method, not a lambda holding self: that cycle left the widget to
+        # the garbage collector, and PySide then deleted it twice (a crash).
+        self.remove.clicked.connect(self._request_removal)
         self.status = SecondaryLabel(scale=0.9)
         self.status.setWordWrap(True)
 
@@ -217,6 +224,9 @@ class ShortcutRow(QWidget):
         self._sync()
         self.changed.emit()
 
+    def _request_removal(self) -> None:
+        self.removeRequested.emit(self)
+
 
 class ShortcutEditor(Card):
     """The card of shortcuts, with Add."""
@@ -229,7 +239,7 @@ class ShortcutEditor(Card):
         self._displays: list[tuple[str, str]] = []
         self.rows: list[ShortcutRow] = []
         self.add_button = QPushButton("Add shortcut")
-        self.add_button.clicked.connect(lambda: self._add(Shortcut(), focus=True))
+        self.add_button.clicked.connect(self._add_new)  # bound, as the rows' ✕
         holder = QWidget()
         self._rows_layout = QVBoxLayout(holder)
         self._rows_layout.setContentsMargins(0, 2, 0, 0)
@@ -268,6 +278,9 @@ class ShortcutEditor(Card):
             if shortcut is not None:
                 seen.add(shortcut.keys)
             row.status.setText(text)
+
+    def _add_new(self) -> None:
+        self._add(Shortcut(), focus=True)
 
     def _add(self, shortcut: Shortcut, focus: bool = False) -> None:
         if len(self.rows) >= MAX_ROWS:

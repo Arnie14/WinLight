@@ -41,7 +41,7 @@ class PointRow(QWidget):
         self._level_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._level_label.setMinimumWidth(self._level_label.fontMetrics().horizontalAdvance("100%") + 4)
         self.remove = QToolButton(text="✕", toolTip="Remove this time", autoRaise=True)
-        self.remove.clicked.connect(lambda: self.removeRequested.emit(self))
+        self.remove.clicked.connect(self._request_removal)  # bound: a lambda holding self crashed PySide at collection
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
@@ -81,6 +81,9 @@ class PointRow(QWidget):
     def _on_changed(self) -> None:
         self._sync()
         self.changed.emit()
+
+    def _request_removal(self) -> None:
+        self.removeRequested.emit(self)
 
 
 class ScheduleEditor(Card):

@@ -91,6 +91,8 @@ def problem(chord: Chord) -> str:
     """Why this combination can't be a shortcut, or "" if it can."""
     if chord.key in NEED_MODIFIER and not chord.modifiers - {"Shift"}:
         return "Add Ctrl, Alt or Win: on its own (or with Shift) this key is for typing"
+    if chord.key == "F12" and not chord.modifiers:  # RegisterHotKey's documentation
+        return "Windows keeps F12 on its own for debuggers: add Ctrl, Alt, Shift or Win"
     return ""
 
 

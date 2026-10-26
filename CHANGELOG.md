@@ -6,16 +6,19 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 ### Added
 
-- **Keyboard shortcuts** (Settings > Shortcuts): brighter or dimmer by a step, a set brightness, night light on or off, suspend or resume, and opening the panel, for every display or one. Click a shortcut's field and press the keys to record them. Each shortcut says whether it works, or whether another app already has its keys. Holding a brightness shortcut keeps stepping, and each display steps from its own level.
+- **Keyboard shortcuts** (Settings > Shortcuts): brighter or dimmer by a step, a set brightness, night light on or off, suspend or resume, and opening the panel, for every display or one. Click a shortcut's field and press the keys to record them. Each shortcut says whether it works, or whether another app already has its keys. Holding a brightness shortcut keeps stepping, and each display steps from its own level. A shortcut whose keys another app has is tried again every 30 seconds, so it works once that app quits. The panel's shortcut closes the panel when pressed again.
 - **A note at the bottom of the screen** shows the new levels or what changed after a shortcut, for two seconds. It never takes focus, and isn't shown over a game in exclusive fullscreen. It can be turned off on the Shortcuts page.
 
 ### Changed
 
 - Settings opens at start (when "Start minimized" is off) once everything else has started, rather than part way through.
+- **Settings survive going back a version.** Settings a newer version saved and an older one doesn't know, shortcuts among them, are kept when the older version saves, so updating again finds them. LightBulb's users lost their hotkeys this way.
 
 ### For developers
 
-- Tests for recording and checking keys, registering shortcuts with Windows (taken keys, the same keys twice, pausing while recording), held keys, per-display steps, and a check in `tools/hardware_checks.py` that registers a shortcut and presses it on the real keyboard input.
+- Tests for recording and checking keys, registering shortcuts with Windows (taken keys, the same keys twice, pausing while recording), held keys, per-display steps, and a check in `tools/hardware_checks.py` that registers a shortcut, presses it on the real keyboard input, and checks that the note never takes focus.
+- The editors' remove buttons no longer hold their row in a reference cycle, which crashed Python as it exited after the tests had passed (the first 0.5.0 build failed on it).
+- Every hotkey report and commit in Twinkle Tray and LightBulb was gone through; the ones that apply are guarded by tests that cite them.
 
 ## 0.4.0 Beta 1 (2026-10-23)
 

@@ -415,7 +415,10 @@ class NightLightApp:
             toggle_suspended(self.controller)
             self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
         elif action == PANEL:
-            self.show_panel()
+            if self.flyout.isVisible():
+                self.flyout.hide()  # pressed again: away, as LightBulb's show/hide shortcut (#378)
+            else:
+                self.show_panel()
 
     def _shortcut_brightness(self, shortcut: Shortcut) -> None:
         """Each display a step from the level last set (not a reading that may be

@@ -64,9 +64,27 @@ def test_what_isnt_a_combination_is_refused(text):
     ("Delete", False),  # keys for typing, as in LightBulb's HotKeyTextBox
     ("Ctrl+A", True), ("Alt+1", True), ("Win+Num5", True), ("Ctrl+Space", True),
     ("F13", True), ("PageUp", True), ("Shift+F5", True),  # keys that don't type may stand alone
+    ("F12", False), ("Shift+F12", True),  # Windows keeps F12 alone for debuggers (RegisterHotKey)
 ])
 def test_keys_that_type_need_ctrl_alt_or_win(text, allowed):
     assert (problem(parse(text)) == "") is allowed
+
+
+def test_the_saved_key_names_never_change():
+    """settings.json keeps keys by these names: renaming one would silently
+    drop the shortcuts saved with it (Twinkle Tray #124: hotkeys stopped
+    working after an update). Add names; never rename or remove one."""
+    from nightlight.core.shortcuts import KEYS
+
+    named = ["NumMultiply", "NumAdd", "NumSubtract", "NumDecimal", "NumDivide", "Left", "Up", "Right", "Down",
+             "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "Space", "Enter", "Tab", "Backspace",
+             "Semicolon", "Equals", "Comma", "Minus", "Period", "Slash", "Backquote", "BracketLeft", "Backslash",
+             "BracketRight", "Quote"]
+    expected = {*"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", *(f"F{n}" for n in range(1, 25)), *(f"Num{n}" for n in range(10)), *named}
+    assert expected <= set(KEYS)
+    assert (KEYS["A"], KEYS["0"], KEYS["F1"], KEYS["F24"], KEYS["Num0"], KEYS["NumSubtract"], KEYS["Minus"], KEYS["Up"]) == \
+        (0x41, 0x30, 0x70, 0x87, 0x60, 0x6D, 0xBD, 0x26)  # Ctrl+minus is the main row's key (Twinkle Tray #367)
+    assert str(parse("ctrl+alt+shift+win+f24")) == "Ctrl+Alt+Shift+Win+F24"  # three modifiers and more (#1237)
 
 
 def test_a_shortcut_is_kept_only_if_it_can_be_used():
@@ -166,6 +184,29 @@ def test_what_windows_says_is_shown_for_each():
     assert ShortcutService(FakeEvents({0x26: -1}), print).status("x") == ""
     svc3, _events, _ran, _clock = service((UP,), answers={0x26: -1})
     assert svc3.status("Ctrl+Alt+Up") == UNAVAILABLE
+
+
+def test_keys_another_app_has_are_tried_again_until_free():
+    """An app that started first at sign-in has the keys; once it quits, the
+    shortcut works without Winlight restarting or Settings being applied."""
+    svc, events, ran, clock = service((UP, DOWN, Shortcut("Ctrl+Alt+F5")), answers={0x28: 1409, 0x74: 5})
+    changes = []
+    svc.changed.connect(lambda: changes.append(svc.status(DOWN.keys)))
+    assert svc._retry.isActive() and svc._retry.interval() == 30_000
+    svc._retry_taken()  # still taken
+    assert svc.status(DOWN.keys) == TAKEN and changes == [] and svc._retry.isActive()
+    events.answers[0x28] = 0  # the other app quit
+    svc._retry_taken()
+    assert svc.status(DOWN.keys) == WORKS and changes == [WORKS] and not svc._retry.isActive()
+    assert svc.status("Ctrl+Alt+F5") == FAILED  # refused for another reason: not retried
+    clock.now += 1
+    events.hotkeyPressed.emit(2)
+    assert ran == [DOWN]
+    events.answers[0x28] = 1409
+    svc.set_shortcuts((DOWN,))
+    assert svc._retry.isActive()
+    svc.stop()  # quitting, or recording a shortcut
+    assert not svc._retry.isActive()
 
 
 def test_changing_shortcuts_lets_go_of_the_old_ones_first():
@@ -368,6 +409,17 @@ def test_the_panel_shortcut_opens_the_panel_unless_a_game_is_fullscreen(app, mon
     assert opened == [True]
 
 
+def test_pressed_again_the_panel_shortcut_closes_the_panel(app, monkeypatch):
+    """As LightBulb's show/hide shortcut does (#378)."""
+    opened = []
+    monkeypatch.setattr(app, "_open_flyout", lambda anchor=None: opened.append(True))
+    monkeypatch.setattr(app.flyout, "isVisible", lambda: True)
+    hidden = []
+    monkeypatch.setattr(app.flyout, "hide", lambda: hidden.append(True))
+    app._run_shortcut(Shortcut("Ctrl+Alt+P", PANEL))
+    assert hidden == [True] and opened == []
+
+
 @pytest.mark.parametrize("reason", ["off", "panel open", "exclusive fullscreen"])
 def test_the_overlay_stays_away_when_it_should(app, monkeypatch, reason):
     from dataclasses import replace
@@ -441,6 +493,31 @@ def test_keys_for_typing_and_unusable_keys_are_refused(recorder, key, modifiers)
     QTest.keyClick(recorder, key, modifiers)
     assert recorder.text() == "Ctrl+Alt+Up"
     assert bool(refused) is (key != Qt.Key.Key_Control)
+
+
+def test_keys_go_to_the_field_before_the_windows_own_shortcuts():
+    """Alt+A would press a button labelled "&Apply", Ctrl+S a window's shortcut,
+    rather than being recorded (LightBulb's recorder once missed Alt: 56f6f45)."""
+    from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+
+    from nightlight.ui.shortcut_editor import KeyRecorder
+
+    window = QWidget()
+    field, button = KeyRecorder(), QPushButton("&Apply")
+    pressed, fired = [], []
+    button.clicked.connect(lambda: pressed.append(True))
+    QShortcut(QKeySequence("Ctrl+S"), window).activated.connect(lambda: fired.append(True))
+    layout = QVBoxLayout(window)
+    layout.addWidget(field)
+    layout.addWidget(button)
+    active(window)
+    field.setFocus()
+    QTest.keyClick(field, Qt.Key.Key_A, Qt.KeyboardModifier.AltModifier)
+    assert field.text() == "Alt+A" and pressed == []
+    QTest.keyClick(field, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
+    assert field.text() == "Ctrl+S" and fired == []
+    window.hide()
 
 
 def test_tab_is_recorded_rather_than_moving_on(recorder):
@@ -613,6 +690,37 @@ def test_registering_with_windows_and_hearing_the_shortcut():
     env = {**os.environ, "QT_QPA_PLATFORM": "windows"}
     result = subprocess.run([sys.executable, "-c", REAL, str(ROOT)], capture_output=True, text=True, timeout=60, env=env)
     assert result.stdout.split("\n")[-2] == "0 1409 [41] 0", result.stderr[-2000:]
+
+
+COLLECTED = """
+import gc, sys
+sys.path.insert(0, sys.argv[1])
+from PySide6.QtWidgets import QApplication
+app = QApplication([])
+from nightlight.core.shortcuts import Shortcut
+from nightlight.ui.schedule_editor import PointRow
+from nightlight.ui.shortcut_editor import ShortcutEditor
+from nightlight.config import SchedulePoint
+def leave():
+    editor = ShortcutEditor()
+    editor._add(Shortcut("F13"))
+    editor.rows[0].remove.click()
+    editor._add(Shortcut("F14"))
+    PointRow(SchedulePoint())
+for _ in range(3):
+    leave()
+gc.collect()
+print("collected")
+"""
+
+
+def test_editors_left_to_the_garbage_collector_exit_cleanly():
+    """A lambda holding self on a child's signal made a cycle that PySide
+    deleted twice when collected: the process crashed after every test had
+    passed (0.5.0 Beta 1's first release build)."""
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    result = subprocess.run([sys.executable, "-c", COLLECTED, str(ROOT)], capture_output=True, text=True, timeout=60, env=env)
+    assert (result.returncode, result.stdout.strip()) == (0, "collected"), result.stderr[-2000:]
 
 
 def test_only_the_first_of_two_rows_with_the_same_keys_is_said_to_work():

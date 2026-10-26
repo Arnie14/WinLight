@@ -523,6 +523,38 @@ def shortcuts():
     check("stopped: Windows has the keys free again", events.register_hotkey(99, 0x7, 0x87) == 0)
     events.unregister_hotkey(99)
     events.close()
+    shortcut_note()
+
+
+def shortcut_note():
+    """The note a shortcut shows: on top, never activated, clicks through,
+    and the window in front keeps focus while it shows and after it goes
+    (Twinkle Tray #479, #539, #1002, #1060)."""
+    from PySide6.QtCore import QCoreApplication
+
+    from nightlight.ui import shortcut_overlay
+
+    user32 = ctypes.WinDLL("user32")
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+    shortcut_overlay.SHOW_MS = 600
+    note = shortcut_overlay.ShortcutOverlay()
+    front = user32.GetForegroundWindow()
+    note.show_levels([("Built-in display", 50)])
+    QCoreApplication.processEvents()
+    style = user32.GetWindowLongPtrW(int(note.winId()), -20)  # GWL_EXSTYLE
+    check("the note is on top, never activated and lets clicks through",
+          note.isVisible() and all(style & flag for flag in (0x8, 0x08000000, 0x20)), hex(style))
+    check("the window in front keeps focus while it shows", user32.GetForegroundWindow() == front)
+    deadline = time.monotonic() + 3
+    while note.isVisible() and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.02)
+    for _ in range(25):  # what Windows does once it's gone
+        QCoreApplication.processEvents()
+        time.sleep(0.02)
+    check("it goes by itself, and the window in front still has focus", not note.isVisible() and user32.GetForegroundWindow() == front)
 
 
 def main() -> int:

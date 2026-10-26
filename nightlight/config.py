@@ -25,7 +25,7 @@ from nightlight.system.files import write_atomic
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2  # raised whenever settings are added (2: shortcuts), for _keep_newer
 MAX_TRANSITION_MINUTES = 600
 MAX_IDLE_MINUTES = 240
 MAX_SOLAR_TRANSITION_MINUTES = 120
@@ -330,7 +330,31 @@ def _keep_damaged(path: Path) -> None:
 
 def save(config: AppConfig, path: Path) -> None:
     data = {"version": CONFIG_VERSION, **_to_json(config)}
+    _keep_newer(data, path)
     write_atomic(path, json.dumps(data, indent=2))  # a crash mid-write can't leave a truncated file
+
+
+def _keep_newer(data: dict, path: Path) -> None:
+    """When a newer version saved the file, keep what it saved and this one
+    doesn't know (a section, or a setting in one), and its version number, so
+    they're kept again at each save until that version saves the file itself.
+    Going back a version and forward again then loses nothing: LightBulb's
+    users lost their hotkeys after updates (#202), and Twinkle Tray keeps a
+    copy of its old hotkeys for going back (1.16). A file from an older
+    version isn't merged: its retired settings stay retired."""
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(saved, dict) or not isinstance(saved.get("version"), int) or saved["version"] <= CONFIG_VERSION:
+        return
+    data["version"] = saved["version"]
+    for key, value in saved.items():
+        if key not in data:
+            data[key] = value
+        elif key != "displays" and isinstance(data[key], dict) and isinstance(value, dict):  # displays: keyed by display
+            for name, setting in value.items():
+                data[key].setdefault(name, setting)
 
 
 def _from_dict[T](cls: type[T], section: str, data: object) -> T:

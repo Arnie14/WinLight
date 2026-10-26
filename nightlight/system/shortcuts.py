@@ -10,6 +10,8 @@ shortcuts change. Lessons from both, and from Twinkle Tray's issues:
   when Windows refuses it), rather than a shortcut that silently does nothing.
 - Two shortcuts with the same keys: only the first is registered, and the
   Settings page marks the others.
+- Keys another app has are tried again every RETRY_MS, so a shortcut lost to
+  an app that started first at sign-in works once that app quits.
 - A held key repeats; repeats closer than REPEAT_MS are dropped (Twinkle
   Tray: 100 ms, LightBulb: 50 ms). Switches (night light, suspend, the
   panel) are registered with MOD_NOREPEAT, so holding them doesn't flicker.
@@ -26,13 +28,14 @@ import logging
 import time
 from collections.abc import Callable
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from nightlight.core.shortcuts import MOD_NOREPEAT, REPEATING, Shortcut, parse
 
 log = logging.getLogger(__name__)
 
 REPEAT_MS = 100
+RETRY_MS = 30_000
 ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 # Each shortcut's state, as Settings shows it.
@@ -58,7 +61,10 @@ class ShortcutService(QObject):
         self._registered: dict[int, Shortcut] = {}  # id -> shortcut
         self._status: dict[str, str] = {}  # keys -> status
         self._last_run: dict[int, float] = {}
+        self._taken: dict[int, Shortcut] = {}  # id -> shortcut whose keys another app has
         self._paused = False
+        self._retry = QTimer(self, interval=RETRY_MS)
+        self._retry.timeout.connect(self._retry_taken)
         events.hotkeyPressed.connect(self._pressed)
 
     def set_shortcuts(self, shortcuts: tuple[Shortcut, ...]) -> None:
@@ -94,24 +100,44 @@ class ShortcutService(QObject):
             if shortcut.keys in seen:
                 continue  # the first with these keys has them (the editor marks the others)
             seen.add(shortcut.keys)
-            modifiers, key = parse(shortcut.keys).codes
-            if shortcut.action not in REPEATING:
-                modifiers |= MOD_NOREPEAT
-            error = self._events.register_hotkey(hotkey_id, modifiers, key)
+            error = self._register(hotkey_id, shortcut)
             if error == 0:
-                self._registered[hotkey_id] = shortcut
-                self._status[shortcut.keys] = WORKS
-            else:
-                self._status[shortcut.keys] = {ERROR_HOTKEY_ALREADY_REGISTERED: TAKEN, -1: UNAVAILABLE}.get(error, FAILED)
-                log.info("Shortcut %s isn't available: %s (%s)", shortcut.keys, self._status[shortcut.keys], error)
+                continue
+            self._status[shortcut.keys] = {ERROR_HOTKEY_ALREADY_REGISTERED: TAKEN, -1: UNAVAILABLE}.get(error, FAILED)
+            log.info("Shortcut %s isn't available: %s (%s)", shortcut.keys, self._status[shortcut.keys], error)
+            if error == ERROR_HOTKEY_ALREADY_REGISTERED:
+                self._taken[hotkey_id] = shortcut
         if self._registered:
             log.info("Shortcuts: %d registered", len(self._registered))
+        if self._taken:
+            self._retry.start()
         self.changed.emit()
+
+    def _register(self, hotkey_id: int, shortcut: Shortcut) -> int:
+        modifiers, key = parse(shortcut.keys).codes
+        if shortcut.action not in REPEATING:
+            modifiers |= MOD_NOREPEAT
+        error = self._events.register_hotkey(hotkey_id, modifiers, key)
+        if error == 0:
+            self._registered[hotkey_id] = shortcut
+            self._status[shortcut.keys] = WORKS
+        return error
+
+    def _retry_taken(self) -> None:
+        for hotkey_id, shortcut in list(self._taken.items()):
+            if self._register(hotkey_id, shortcut) == 0:
+                del self._taken[hotkey_id]
+                log.info("Shortcut %s is free again and registered", shortcut.keys)
+                self.changed.emit()
+        if not self._taken:
+            self._retry.stop()
 
     def _unregister_all(self) -> None:
         for hotkey_id in self._registered:
             self._events.unregister_hotkey(hotkey_id)
         self._registered.clear()
+        self._taken.clear()
+        self._retry.stop()
         self._last_run.clear()
 
     def _pressed(self, hotkey_id: int) -> None:
