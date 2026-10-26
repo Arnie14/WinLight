@@ -295,6 +295,8 @@ def running_apps() -> list[str]:
 # --- Session and power events -------------------------------------------------
 
 WM_ENDSESSION = 0x0016
+WM_HOTKEY = 0x0312  # a shortcut registered with RegisterHotKey; wParam is its id
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409  # another app (or this one) has the combination
 WM_TIMECHANGE = 0x001E
 WM_DISPLAYCHANGE = 0x007E
 WM_POWERBROADCAST = 0x0218
@@ -383,6 +385,7 @@ class SystemEvents(QObject):
     endingSession = Signal()
     panelBrightness = Signal(int)  # the built-in panel's level changed (keys, Windows' slider)
     powerSourceChanged = Signal(int)  # plugged in (0) or unplugged (1, 2 for a UPS)
+    hotkeyPressed = Signal(int)  # a registered shortcut, by its id (register_hotkey)
 
     def __init__(self, app=None, parent: QObject | None = None, clock=time.monotonic) -> None:
         super().__init__(parent)
@@ -451,6 +454,21 @@ class SystemEvents(QObject):
             ENDING_SESSION: self.endingSession,
         }[what].emit()
 
+    def register_hotkey(self, hotkey_id: int, modifiers: int, virtual_key: int) -> int:
+        """Register a shortcut on the hidden window, as LightBulb and Twinkle
+        Tray do (RegisterHotKey; no keyboard hook, which anti-cheat flags).
+        0 if registered, else Windows' error (ERROR_HOTKEY_ALREADY_REGISTERED:
+        another app has it), or -1 when not listening (not Windows)."""
+        if not self.listening:
+            return -1
+        if _user32.RegisterHotKey(self._hwnd, hotkey_id, modifiers, virtual_key):
+            return 0
+        return ctypes.get_last_error() or -1
+
+    def unregister_hotkey(self, hotkey_id: int) -> None:
+        if self.listening:
+            _user32.UnregisterHotKey(self._hwnd, hotkey_id)
+
     def close(self) -> None:
         if not self.listening:
             return
@@ -493,6 +511,9 @@ class SystemEvents(QObject):
         if identity == self._last_message:
             return  # a posted message seen a second time
         self._last_message = identity
+        if msg.message == WM_HOTKEY:
+            self.hotkeyPressed.emit(int(msg.wParam))
+            return
         setting = data = None
         if msg.message == WM_POWERBROADCAST and msg.wParam == PBT_POWERSETTINGCHANGE and msg.lParam:
             setting, data = read_setting(msg.lParam)
@@ -736,5 +757,9 @@ if sys.platform == "win32":
     _wtsapi32.WTSRegisterSessionNotification.restype = wintypes.BOOL
     _wtsapi32.WTSUnRegisterSessionNotification.argtypes = [wintypes.HWND]
     _wtsapi32.WTSUnRegisterSessionNotification.restype = wintypes.BOOL
+    _user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+    _user32.RegisterHotKey.restype = wintypes.BOOL
+    _user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+    _user32.UnregisterHotKey.restype = wintypes.BOOL
     _user32.UnregisterPowerSettingNotification.argtypes = [wintypes.HANDLE]
     _user32.UnregisterPowerSettingNotification.restype = wintypes.BOOL

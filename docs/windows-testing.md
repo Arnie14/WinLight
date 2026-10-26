@@ -192,6 +192,7 @@ Settings > Brightness > **Change brightness by time of day**:
 - [ ] Switching Schedule between Always off, Always on, Sunset to sunrise and Custom times shows and hides rows without gaps; a page scrolls only when it is taller than the window. Tab reaches every control.
 - [ ] Settings > Displays: rename a display: the panel, `--list` and the diagnostics use the new name; clearing it brings back its own. Hide a display: it's gone from the panel and "Change all displays together", and the schedule, idle dimming and restores leave it alone.
 - [ ] The [command line](command-line.md): `--list`, `--list --json`, `--get --display 1`, `--set 40`, `--set +10 --display 2`, `--set 50 --display <part of a name>`, `--set +10 --panel`, `--night-light on|off|toggle|auto|status`, `--refresh`, `--diagnostics`. Errors say why and exit with 1 (`--display 9`, `--set bright`); with Winlight not running it exits with 2.
+- [ ] Settings > **Shortcuts**: add one, click its field and press Ctrl+Alt+Up; set it to "Brighter by" 10, Apply: it says "Works", and pressing it raises every display by 10%, with a note at the bottom of the screen. Holding it keeps stepping. Add one with keys another app uses (Ctrl+Alt+Del can't be recorded; try one your other tools register): it says "Used by another app". A shortcut for one display changes only that display. Over a game in exclusive fullscreen, pressing a shortcut still works, but no note appears and the game keeps focus.
 - [ ] Take screenshots of the panel and the settings window in both themes.
 
 ## 10. Diagnostics and privacy

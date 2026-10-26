@@ -2,6 +2,21 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.5.0 Beta 1 (2026-10-26)
+
+### Added
+
+- **Keyboard shortcuts** (Settings > Shortcuts): brighter or dimmer by a step, a set brightness, night light on or off, suspend or resume, and opening the panel, for every display or one. Click a shortcut's field and press the keys to record them. Each shortcut says whether it works, or whether another app already has its keys. Holding a brightness shortcut keeps stepping, and each display steps from its own level.
+- **A note at the bottom of the screen** shows the new levels or what changed after a shortcut, for two seconds. It never takes focus, and isn't shown over a game in exclusive fullscreen. It can be turned off on the Shortcuts page.
+
+### Changed
+
+- Settings opens at start (when "Start minimized" is off) once everything else has started, rather than part way through.
+
+### For developers
+
+- Tests for recording and checking keys, registering shortcuts with Windows (taken keys, the same keys twice, pausing while recording), held keys, per-display steps, and a check in `tools/hardware_checks.py` that registers a shortcut and presses it on the real keyboard input.
+
 ## 0.4.0 Beta 1 (2026-10-23)
 
 ### Added

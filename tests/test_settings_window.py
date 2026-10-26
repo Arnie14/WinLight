@@ -138,7 +138,7 @@ def test_brightness_options(window):
 
 
 def test_settings_are_grouped_in_pages(window):
-    assert window.page_titles() == ["Night Light", "Brightness", "Displays", "General"]
+    assert window.page_titles() == ["Night Light", "Brightness", "Displays", "Shortcuts", "General"]
     assert window.current_page() == 0
     window._nav[2].click()  # the navigation pane
     assert window.current_page() == 2
@@ -344,9 +344,9 @@ def test_reopened_only_the_first_page_entry_is_highlighted(window):
     window.close()
     window.show()
     QApplication.processEvents()
-    assert [b.isChecked() for b in window._nav] == [True, False, False, False]
+    assert [b.isChecked() for b in window._nav] == [True, False, False, False, False]
     assert not any(b._hovered for b in window._nav)  # hidden under the cursor: no hover left over
-    assert [b.hasFocus() for b in window._nav][1:] == [False, False, False]
+    assert not any(b.hasFocus() for b in window._nav[1:])
     QApplication.sendEvent(window._nav[1], QEvent(QEvent.Type.Leave))
     window.close()
 
@@ -441,7 +441,8 @@ def test_every_setting_has_its_place_on_a_page(window):
         0: (window.exempt_fullscreen, window.exempt_apps),
         1: (window.schedule, window.follow_laptop, window.idle_dim, window.idle_minutes, window.idle_level),
         2: (window.displays,),
-        3: (window.respect_fullscreen, window.start_with_windows),
+        3: (window.shortcut_editor, window.shortcut_overlay),
+        4: (window.respect_fullscreen, window.start_with_windows),
     }
     for page, controls in where.items():
         for control in controls:

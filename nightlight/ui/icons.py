@@ -131,6 +131,24 @@ def display_glyph(color: QColor) -> QIcon:
     return _icon(draw)
 
 
+def keyboard_glyph(color: QColor) -> QIcon:
+    """A keyboard, for the Shortcuts page."""
+
+    def draw(painter: QPainter) -> None:
+        pen = QPen(color, 5)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawRoundedRect(QRectF(6, 16, 52, 32), 5, 5)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        for row, y in enumerate((24, 31)):
+            for column in range(5 - row):
+                painter.drawRect(QRectF(14 + column * 8 + row * 4, y, 4, 4))
+        painter.drawRoundedRect(QRectF(20, 39, 24, 4), 1.5, 1.5)  # the space bar
+
+    return _icon(draw)
+
+
 def _icon(draw: Callable[[QPainter], None]) -> QIcon:
     """Draw at each size the tray may ask for (16-32 px depending on DPI)
     rather than letting Windows shrink one large image into a blur."""

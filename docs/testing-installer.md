@@ -52,6 +52,7 @@ In the panel, click ⚙ (Settings):
 - [ ] Laptop with an external monitor: turn on **Follow the laptop's brightness keys**, Apply, and press the brightness keys: the external monitor follows within about 2 seconds.
 - [ ] Under **When I'm away**, turn on **Dim displays when I'm away**, set **After** 1 min and **Dim to** 20 %, Apply, and leave the PC alone: after a minute the displays fade down; move the mouse and they come back. Play a video and leave it: nothing dims. Open a web page in fullscreen (F11) and leave it: the displays dim. Add an app under **Never dim while these apps are in front** and leave it in front: nothing dims.
 - [ ] Sleep the PC for a few minutes with a monitor connected, wake it, and wait 2 minutes before **Report a Problem…**: the summary's "Last wake from sleep" section shows when each display answered again.
+- [ ] Settings → **Shortcuts** → **Add shortcut**, press Ctrl+Alt+Up, choose "Brighter by" 10, then another with Ctrl+Alt+Down and "Dimmer by" 10. Apply: both say "Works", and pressing them changes the brightness with a note at the bottom of the screen.
 
 ## 5. Command line (optional)
 

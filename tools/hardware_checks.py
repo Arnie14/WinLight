@@ -480,6 +480,49 @@ def features():
     running = winsystem.running_apps()
     check("running_apps() lists lowercase exe names", running and all(a == a.lower() and a.endswith(".exe") for a in running), f"{len(running)} apps")
     note("Windows Night Light now", repr(winsystem.windows_night_light_on()))
+    shortcuts()
+
+
+def shortcuts():
+    """A shortcut registered with Windows and pressed on the real keyboard
+    input (keybd_event), through the same service the app uses."""
+    from PySide6.QtCore import QCoreApplication
+
+    from nightlight.core.shortcuts import Shortcut
+    from nightlight.hardware import winsystem
+    from nightlight.system.shortcuts import TAKEN, WORKS, ShortcutService
+
+    events = winsystem.SystemEvents()
+    if not events.listening:
+        skip("shortcuts", "not listening for Windows messages")
+        return
+    pressed = []
+    service = ShortcutService(events, pressed.append)
+    keys = "Ctrl+Alt+Shift+F24"  # unlikely to be anyone else's
+    service.set_shortcuts((Shortcut(keys, "brightness_up", 10),))
+    check("a shortcut registers with Windows", service.status(keys) == WORKS, service.status(keys))
+    other = winsystem.SystemEvents()
+    other_service = ShortcutService(other, lambda s: None)
+    other_service.set_shortcuts((Shortcut(keys, "brightness_up", 10),))
+    check("the same keys a second time are reported as taken", other_service.status(keys) == TAKEN, other_service.status(keys))
+    other_service.stop()
+    other.close()
+
+    user32 = ctypes.WinDLL("user32")
+    vks = (0x11, 0x12, 0x10, 0x87)  # Ctrl, Alt, Shift, F24
+    for vk in vks:
+        user32.keybd_event(vk, 0, 0, 0)
+    for vk in reversed(vks):
+        user32.keybd_event(vk, 0, 2, 0)  # KEYEVENTF_KEYUP
+    deadline = time.monotonic() + 2
+    while not pressed and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    check("pressing it on the keyboard runs it", [s.keys for s in pressed] == [keys], repr(pressed))
+    service.stop()
+    check("stopped: Windows has the keys free again", events.register_hotkey(99, 0x7, 0x87) == 0)
+    events.unregister_hotkey(99)
+    events.close()
 
 
 def main() -> int:

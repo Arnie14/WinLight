@@ -26,7 +26,8 @@ from nightlight.cli.commands import CommandHandler
 from nightlight.color.controller import NightLightController
 from nightlight.color.exemptions import ForegroundWatcher
 from nightlight.core.clock import zone_named
-from nightlight.core.schedule import pausing_held
+from nightlight.core.schedule import OverrideKind, pausing_held
+from nightlight.core.shortcuts import BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_UP, NIGHT_LIGHT, PANEL, SUSPEND, Shortcut
 from nightlight.hardware import winsystem
 from nightlight.hardware.brightness import BrightnessBackend
 from nightlight.hardware.gamma import GammaBackend
@@ -34,10 +35,13 @@ from nightlight.support import compat, diagnostics
 from nightlight.system import autostart
 from nightlight.system.files import write_atomic
 from nightlight.system.safe_mode import SafeMode
+from nightlight.system.shortcuts import ShortcutService
 from nightlight.system.watcher import DisplayWatcher
 from nightlight.ui import reveal, theme
 from nightlight.ui.flyout import Flyout
+from nightlight.ui.night_light_text import is_night_light_on, night_light_status, toggle_suspended
 from nightlight.ui.settings_window import SettingsWindow
+from nightlight.ui.shortcut_overlay import ShortcutOverlay
 from nightlight.ui.tray import Tray
 
 log = logging.getLogger(__name__)
@@ -152,8 +156,6 @@ class NightLightApp:
             self.tray.quitRequested.connect(qapp.quit)
             self.tray.show()
             qapp.setQuitOnLastWindowClosed(False)
-            if not self._config.general.start_minimized and not self._busy("the settings at start"):
-                self.show_settings()
         else:
             log.warning("No system tray available; showing the panel as a window")
             self.flyout.show_near()
@@ -167,6 +169,10 @@ class NightLightApp:
         self.system_events.unlocked.connect(self._on_unlocked)
         self.system_events.displayChanged.connect(self.controller.reapply_now)  # at once; detection follows once settled
         self.system_events.panelBrightness.connect(self._on_panel_brightness)
+        # Keyboard shortcuts, registered on the same hidden window.
+        self._shortcut_overlay: ShortcutOverlay | None = None  # made the first time it shows
+        self.shortcuts = ShortcutService(self.system_events, self._run_shortcut)
+        self.shortcuts.set_shortcuts(self._config.shortcuts)
         self.system_events.powerSourceChanged.connect(lambda _source: self.power_source.power_source_changed())
         self._watcher = DisplayWatcher(qapp, events=self.system_events,
                                        idle_seconds=winsystem.idle_seconds if sys.platform == "win32" else None)
@@ -193,6 +199,9 @@ class NightLightApp:
         qapp.aboutToQuit.connect(self._shutdown)
         self.monitors.monitorsChanged.connect(lambda _monitors: self._hint_calibration())
         self.monitors.refresh()
+        # Last, once everything the settings window uses (the shortcuts among it) exists.
+        if self.tray is not None and not self._config.general.start_minimized and not self._busy("the settings at start"):
+            self.show_settings()
 
     # --- Windows and panels ---------------------------------------------------
 
@@ -239,8 +248,11 @@ class NightLightApp:
                 reload_calibrations=getattr(self._gamma, "reload_calibrations", None),
                 forget_calibrations=getattr(self._gamma, "forget_calibrations", None),
                 **self._unlocking(),
+                shortcut_status=self.shortcuts.status,
+                pause_shortcuts=self.shortcuts.pause,
             )
             self._settings.applied.connect(self._apply_settings)
+            self.shortcuts.changed.connect(self._settings.refresh_shortcut_status)
         self._settings.set_windows_night_light(self._windows_night_light)
         if self.tray:
             self.flyout.hide()
@@ -387,6 +399,61 @@ class NightLightApp:
         controller = self.controller
         return controller.state.night_factor > 0 and pausing_held(controller.config, controller.now(), controller.zone)
 
+    # --- Shortcuts ------------------------------------------------------------
+
+    def _run_shortcut(self, shortcut: Shortcut) -> None:
+        """What a keyboard shortcut does, through the same paths as the panel
+        and the command line."""
+        action = shortcut.action
+        if action in (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET):
+            self._shortcut_brightness(shortcut)
+        elif action == NIGHT_LIGHT:
+            controller = self.controller
+            controller.set_override(OverrideKind.SUSPEND if is_night_light_on(controller) else OverrideKind.ACTIVATE, None)
+            self._show_shortcut_result(message=f"Night light: {night_light_status(controller)}")
+        elif action == SUSPEND:
+            toggle_suspended(self.controller)
+            self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
+        elif action == PANEL:
+            self.show_panel()
+
+    def _shortcut_brightness(self, shortcut: Shortcut) -> None:
+        """Each display a step from the level last set (not a reading that may be
+        stale, so held keys don't jump: Twinkle Tray #60), clamped on its own,
+        so displays keep their difference (#716). The user's own change: it
+        stands until the schedule's next point."""
+        levels = []
+        for monitor in self.monitors.monitors:
+            state = self.monitors.state(monitor.key)
+            if (not monitor.supported or state is None or not state.controllable or self._config.hidden(monitor.key)
+                    or (shortcut.display and monitor.key != shortcut.display)):
+                continue
+            current = self.monitors.value(monitor.key)
+            if shortcut.action == BRIGHTNESS_SET:
+                target = shortcut.value
+            elif current is None:
+                continue
+            else:
+                target = current + (shortcut.value if shortcut.action == BRIGHTNESS_UP else -shortcut.value)
+            target = max(monitor.minimum, min(100, target))
+            if target != current:
+                self.monitors.set_brightness(monitor.key, target)
+            levels.append((self._config.display(monitor.key).name or monitor.name, target))
+        if levels:
+            self._show_shortcut_result(levels=levels)
+
+    def _show_shortcut_result(self, levels: list[tuple[str, int]] | None = None, message: str = "") -> None:
+        """The overlay, unless it's off, the panel shows it already, or a game
+        or presentation is in exclusive fullscreen (Twinkle Tray #83)."""
+        if not self._config.general.shortcut_overlay or self.flyout.isVisible() or winsystem.exclusive_fullscreen():
+            return
+        if self._shortcut_overlay is None:
+            self._shortcut_overlay = ShortcutOverlay()
+        if levels:
+            self._shortcut_overlay.show_levels(levels)
+        else:
+            self._shortcut_overlay.show_message(message)
+
     def _hidden_keys(self) -> frozenset[str]:
         """The connected displays the user hid (found under older keys too)."""
         return frozenset(m.key for m in self.monitors.monitors if self._config.hidden(m.key))
@@ -408,6 +475,8 @@ class NightLightApp:
             self.monitors.set_software_dimming(new.general.software_dimming)
         self._apply_preferences(new)
         self.scheduler.set_config(new.brightness_schedule)
+        if new.shortcuts != old.shortcuts:
+            self.shortcuts.set_shortcuts(new.shortcuts)
         if new.night_light != old.night_light:
             self.scheduler.evaluate("location")  # sunrise and sunset points follow the location
 
@@ -534,6 +603,7 @@ class NightLightApp:
         self.controller.shutdown()
         self.brightness_memory.shutdown()
         self.monitors.shutdown()
+        self.shortcuts.stop()
         self.system_events.close()
 
 

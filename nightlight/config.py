@@ -20,6 +20,7 @@ from pathlib import Path
 import platformdirs
 
 from nightlight.core.colortemp import MAX_KELVIN, MIN_KELVIN
+from nightlight.core.shortcuts import Shortcut
 from nightlight.system.files import write_atomic
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,8 @@ class GeneralConfig:
     # Put each display's color calibration back when Windows drops it (e.g.
     # after the screen turns off and on), as calibration loaders do.
     keep_calibration: bool = False
+    # Show the new level (or night light's state) on screen when a shortcut is used.
+    shortcut_overlay: bool = True
     theme: str = "system"  # "system" (follow Windows), "light" or "dark"
     accent: str = "windows"  # Windows' accent colour, or one of ACCENTS
 
@@ -202,6 +205,7 @@ class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     brightness_schedule: BrightnessScheduleConfig = field(default_factory=BrightnessScheduleConfig)
     displays: tuple[DisplayPrefs, ...] = ()
+    shortcuts: tuple[Shortcut, ...] = ()
 
     def display(self, key: str) -> DisplayPrefs:
         """A display's preferences, also when saved under its key from an
@@ -308,6 +312,7 @@ def load(path: Path) -> AppConfig:
         general=_from_dict(GeneralConfig, "general", raw.get("general")).normalized(),
         brightness_schedule=_schedule_from(raw.get("brightness_schedule")),
         displays=_displays_from(raw.get("displays")),
+        shortcuts=_shortcuts_from(raw.get("shortcuts")),
     )
 
 
@@ -377,6 +382,24 @@ def _point_from_step(item: object) -> SchedulePoint | None:
         return SchedulePoint(level, at)
     log.warning("Ignoring invalid brightness step %r", item)
     return None
+
+
+MAX_SHORTCUTS = 32
+
+
+def _shortcuts_from(data: object) -> tuple[Shortcut, ...]:
+    """Each one checked like any other setting; one that can't be used (an
+    unknown key, a bare letter, an unknown action) is left out, not fatal."""
+    if not isinstance(data, list):
+        return ()
+    shortcuts = []
+    for item in data[:MAX_SHORTCUTS]:
+        shortcut = _from_dict(Shortcut, "shortcuts", item).normalized() if isinstance(item, dict) else None
+        if shortcut is None:
+            log.warning("Ignoring a shortcut that can't be used: %r", item)
+        else:
+            shortcuts.append(shortcut)
+    return tuple(shortcuts)
 
 
 def _displays_from(data: object) -> tuple[DisplayPrefs, ...]:

@@ -65,6 +65,7 @@ from nightlight.ui.preview_notice import PreviewNotice
 from nightlight.ui.schedule_editor import ScheduleEditor
 from nightlight.ui.settings_parts import ActionBar, Card, NavButton, PageTitle, SectionLabel, SettingRow, StatusBadge, ToggleSwitch
 from nightlight.ui.settings_widgets import AppList, DisplayList
+from nightlight.ui.shortcut_editor import ShortcutEditor
 from nightlight.ui.widgets import SecondaryLabel, Separator, TemperatureSlider, WindowsNightLightNotice, set_heading_font
 
 log = logging.getLogger(__name__)
@@ -94,7 +95,7 @@ PREFERRED_SIZE = (960, 760)
 # which Qt's sizes leave out.
 SCREEN_MARGIN = 16
 FRAME_HEIGHT = 40
-PAGES = ("Night Light", "Brightness", "Displays", "General")
+PAGES = ("Night Light", "Brightness", "Displays", "Shortcuts", "General")
 THEME_CHOICES = {"system": "Match Windows", "light": "Light", "dark": "Dark"}
 # Sleep-friendly night light, from what sleep researchers advise: dim, warm
 # light for the 2-3 hours before bed (Harvard Health, "Blue light has a dark
@@ -153,6 +154,8 @@ class SettingsWindow(QWidget):
         forget_calibrations: Callable[[], int] | None = None,
         unlock_warmer: Callable[[], str] | None = None,
         warmer_unlocked: Callable[[], bool] = lambda: False,
+        shortcut_status: Callable[[str], str] | None = None,
+        pause_shortcuts: Callable[[bool], None] | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
@@ -168,6 +171,11 @@ class SettingsWindow(QWidget):
         self._report_problem = report_problem
         self._reload_calibrations = reload_calibrations
         self._unlock_warmer = unlock_warmer  # sets GdiIcmGammaRange: "done", "cancelled" or "failed"
+        # Shortcuts: Windows' answer for each (ShortcutService.status), and letting
+        # go of them while one is recorded (ShortcutService.pause).
+        self._shortcut_status = shortcut_status or (lambda _keys: "")
+        self._pause_shortcuts = pause_shortcuts
+        self._recording = False
         self._warmer_unlocked = warmer_unlocked
         self._unlock_outcome = ""
         self._preview_notice: PreviewNotice | None = None  # made when a slider is first held
@@ -186,7 +194,8 @@ class SettingsWindow(QWidget):
 
         self._build_controls(can_autostart)
         self._stack = QStackedWidget()
-        for page in (self._night_light_page(), self._brightness_page(), self._displays_page(), self._general_page()):
+        for page in (self._night_light_page(), self._brightness_page(), self._displays_page(), self._shortcuts_page(),
+                     self._general_page()):
             self._stack.addWidget(_scrolling(page))
         # Each page opens at its top, rather than where it was last left.
         self._stack.currentChanged.connect(self._scroll_to_top)
@@ -267,6 +276,8 @@ class SettingsWindow(QWidget):
             self.respect_fullscreen.toggled,
             self.follow_laptop.toggled,
             self.keep_on_power_change.toggled,
+            self.shortcut_editor.changed,
+            self.shortcut_overlay.toggled,
             self.idle_dim.toggled,
             self.idle_minutes.valueChanged,
             self.idle_level.valueChanged,
@@ -282,6 +293,7 @@ class SettingsWindow(QWidget):
         ):
             signal.connect(self._on_changed)
         self.location.currentIndexChanged.connect(self._on_location_picked)
+        self.shortcut_editor.recordingChanged.connect(self._set_recording)
         for slider in (self.day_temperature, self.night_temperature):
             self._connect_preview(slider)
         controller.changed.connect(self._update_status)
@@ -343,7 +355,7 @@ class SettingsWindow(QWidget):
         layout.addLayout(identity)
         group = QButtonGroup(self)
         self._nav: list[NavButton] = []
-        for index, (text, glyph) in enumerate(zip(PAGES, (icons.moon_glyph, icons.sun_glyph, icons.display_glyph, icons.gear_glyph))):
+        for index, (text, glyph) in enumerate(zip(PAGES, (icons.moon_glyph, icons.sun_glyph, icons.display_glyph, icons.keyboard_glyph, icons.gear_glyph))):
             button = NavButton(text, glyph)
             button.clicked.connect(lambda _checked=False, i=index: self._stack.setCurrentIndex(i))
             group.addButton(button)
@@ -453,6 +465,10 @@ class SettingsWindow(QWidget):
 
         # Displays
         self.displays = DisplayList()
+
+        # Shortcuts
+        self.shortcut_editor = ShortcutEditor()
+        self.shortcut_overlay = ToggleSwitch("Show the change on screen")
         self.keep_calibration = ToggleSwitch("Keep each display's color calibration")
         self.refresh_displays = QPushButton("Detect again")
         self.copy_report = QPushButton("Copy report")
@@ -618,6 +634,31 @@ class SettingsWindow(QWidget):
         layout.addWidget(self.calibration_result)
         return page
 
+    def _shortcuts_page(self) -> QWidget:
+        page, layout = _page("Shortcuts", "Keyboard shortcuts for brightness and night light, in any app.")
+        layout.addWidget(self.shortcut_editor)
+        layout.addWidget(SectionLabel("On screen"))
+        card = Card()
+        card.add(SettingRow("Show the change on screen", "The new brightness or night light's state, for a moment above "
+                            "the taskbar. Never over a game in fullscreen", self.shortcut_overlay))
+        layout.addWidget(card)
+        hint = SecondaryLabel("Fn, and many laptops' brightness keys, are handled by the keyboard or the laptop itself and "
+                              "never reach Windows, so they can't be used. Keyboard software can make them send F13 to F24, "
+                              "which can.", scale=0.9)
+        hint.setWordWrap(True)
+        hint.setContentsMargins(4, 8, 4, 0)
+        layout.addWidget(hint)
+        return page
+
+    def refresh_shortcut_status(self) -> None:
+        """Windows registered (or refused) the shortcuts: show it on each row."""
+        self.shortcut_editor.show_status(self._shortcut_status, self._saved.shortcuts)
+
+    def _set_recording(self, recording: bool) -> None:
+        self._recording = recording
+        if self._pause_shortcuts is not None:
+            self._pause_shortcuts(recording)
+
     def _general_page(self) -> QWidget:
         page, layout = _page("General", f"Startup, appearance, and information about {APP_NAME}.")
         startup = Card()
@@ -701,9 +742,10 @@ class SettingsWindow(QWidget):
             idle_exempt_apps=self.idle_exempt_apps.apps(),
             theme=self.theme.currentData(),
             accent=self.accent.currentData(),
+            shortcut_overlay=self.shortcut_overlay.isChecked(),
         )
         return AppConfig(night_light=night_light, general=general, brightness_schedule=self.schedule.config(),
-                         displays=self.displays.prefs())
+                         displays=self.displays.prefs(), shortcuts=self.shortcut_editor.shortcuts())
 
     def set_windows_night_light(self, on: bool | None) -> None:
         """Show the notice while Windows' own Night Light is on too."""
@@ -733,6 +775,8 @@ class SettingsWindow(QWidget):
                   area.y() + max(0, (area.height() - height - FRAME_HEIGHT) // 2))
 
     def closeEvent(self, event) -> None:
+        if self._recording:
+            self._set_recording(False)  # closed while recording: the shortcuts work again
         self._stop_day_preview()
         self._preview(None)
         # Opened again, the window starts afresh: the first page, at its top,
@@ -766,6 +810,8 @@ class SettingsWindow(QWidget):
         self.solar_transition.setCurrentIndex(self.solar_transition.findData(night_light.solar_transition_minutes))
         self.theme.setCurrentIndex(max(0, self.theme.findData(general.theme)))
         self.accent.setCurrentIndex(max(0, self.accent.findData(general.accent)))
+        self.shortcut_overlay.setChecked(general.shortcut_overlay)
+        self.shortcut_editor.set_shortcuts(config.shortcuts)
         self.start_with_windows.setChecked(general.start_with_windows and self.start_with_windows.isEnabled())
         self.start_minimized.setChecked(general.start_minimized)
         self.remember_brightness.setChecked(general.remember_brightness)
@@ -794,7 +840,10 @@ class SettingsWindow(QWidget):
     def _refresh_display_names(self, *_args, keep_edits: bool = True) -> None:
         """Names and visibility list what is connected now, keeping unsaved edits."""
         prefs = self.displays.prefs() if keep_edits else self._display_prefs
-        self.displays.set_displays(self._monitors.monitors if self._monitors is not None else [], prefs)
+        monitors = self._monitors.monitors if self._monitors is not None else []
+        self.displays.set_displays(monitors, prefs)
+        names = AppConfig(displays=prefs)
+        self.shortcut_editor.set_displays([(m.key, names.display(m.key).name or m.name) for m in monitors if m.supported])
 
     def _apply(self) -> None:
         self._saved = self.current_config()
@@ -836,6 +885,7 @@ class SettingsWindow(QWidget):
             field.setEnabled(self.idle_dim.isChecked())
         self._update_status()
         self._update_schedule_status()
+        self.refresh_shortcut_status()
 
     def _update_windows_limit(self, *_args) -> None:
         """Under Night: the displays where Windows holds night light warmer
