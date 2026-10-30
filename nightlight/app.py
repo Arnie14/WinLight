@@ -279,7 +279,8 @@ class NightLightApp:
             return {}
         from nightlight.hardware import win32
 
-        return {"unlock_warmer": self._unlock_warmer_colors, "warmer_unlocked": win32.gamma_range_expanded}
+        return {"unlock_warmer": self._unlock_warmer_colors, "lock_warmer": self._lock_warmer_colors,
+                "warmer_unlocked": win32.gamma_range_expanded}
 
     def _unlock_warmer_colors(self) -> str:
         """Set GdiIcmGammaRange (after Windows' administrator prompt), then look
@@ -292,6 +293,13 @@ class NightLightApp:
                 displays_changed()  # forgets the limits found
             self.controller.update()  # applies night light again: a limit that remains is found again
         return outcome
+
+    def _lock_warmer_colors(self) -> str:
+        """Remove GdiIcmGammaRange again (after the administrator prompt):
+        Windows puts its limit back at the next sign-in."""
+        from nightlight.hardware import win32
+
+        return win32.restore_gamma_range(int(self._settings.winId()) if self._settings is not None else 0)
 
     def compatibility(self) -> list[compat.CompatibilityEntry]:
         warmest = getattr(self._gamma, "warmest_accepted", dict)()

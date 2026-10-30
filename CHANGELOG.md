@@ -10,6 +10,7 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 ### Changed
 
+- **Windows' color limit is always shown** in Settings > Night Light, with its state: locked or unlocked, whether that's in effect yet (Windows applies a change after signing out), and the displays it holds back. The button unlocks it, or **locks it again**. Before, the option disappeared once the limit was unlocked, leaving no sign of it and no way back. Uninstalling offers to put the limit back, No by default, since f.lux and LightBulb rely on the same setting.
 - **Switching night light back returns to the schedule.** The night light shortcut and `--night-light toggle` switch night light on or off until switched back; switching back now follows the schedule again. Before, pressing twice in the day left night light "suspended until manually resumed", so the evening never came.
 - **Shortcuts for every display leave alone a display set to "No automatic DDC/CI writes in HDR"** while it's in HDR. A shortcut for that display still changes it.
 - **"Dimmer" never raises a display, and "Brighter" never lowers one**, also from below a display's lowest level.
@@ -27,6 +28,7 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - **Two writes of the same file at once could leave half a file** (the gamma journal, written by a call given up as stuck and by the next one): each write now has a temporary file of its own.
 - After signing out started, the display watcher still passed on sleep, wake and display events, and the update check kept its daily timer; both stop now.
 - Saving settings that didn't change night light (Apply on another page) wrote the gamma ramps again.
+- The Shortcuts page's description began "Work in any app"; it reads "Shortcuts work in any app". "Never open over fullscreen apps" says which windows it means, and that pausing night light for fullscreen apps is a separate setting.
 
 ### For developers
 

@@ -259,6 +259,49 @@ def test_unlocking_asks_reg_exe_through_the_administrator_prompt(monkeypatch, ex
 
 
 @windows_only
+@pytest.mark.parametrize(("exit_code", "set_after", "expected"), [
+    (0, False, "done"),
+    (None, True, "cancelled"),
+    (1, True, "failed"),
+    (0, True, "failed"),  # reg.exe said yes, but the value is still there
+])
+def test_locking_again_removes_the_value_through_the_administrator_prompt(monkeypatch, exit_code, set_after, expected):
+    import winreg
+
+    def not_administrator(*args):
+        raise PermissionError("Access is denied")
+
+    asked = []
+    monkeypatch.setattr(winreg, "OpenKey", not_administrator)
+    monkeypatch.setattr(win32, "run_elevated", lambda path, arguments, parent=0: asked.append((path, arguments)) or exit_code)
+    monkeypatch.setattr(win32, "gamma_range_expanded", lambda: set_after)
+    assert win32.restore_gamma_range() == expected
+    [(path, arguments)] = asked
+    assert path.lower().endswith(r"\system32\reg.exe")
+    assert arguments == r'delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM" /v GdiIcmGammaRange /f'
+
+
+@windows_only
+def test_locking_when_already_locked_needs_no_prompt(monkeypatch):
+    import winreg
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def missing(key, name):
+        raise FileNotFoundError(name)
+
+    monkeypatch.setattr(winreg, "OpenKey", lambda *args: Key())
+    monkeypatch.setattr(winreg, "DeleteValue", missing)
+    monkeypatch.setattr(win32, "run_elevated", lambda *args, **kwargs: pytest.fail("asked for administrator approval"))
+    assert win32.restore_gamma_range() == "done"
+
+
+@windows_only
 def test_elevated_programs_report_their_exit_code():
     """The ShellExecuteEx plumbing, for real, without the prompt ("open")."""
     reg = str(pathlib.Path(os.environ["SYSTEMROOT"]) / "System32" / "reg.exe")

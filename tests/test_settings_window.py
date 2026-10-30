@@ -634,36 +634,64 @@ def test_the_windows_limit_shows_only_while_it_is_in_the_way():
     controller.shutdown()
 
 
-def test_warmer_colors_are_offered_only_while_windows_holds_night_light_back():
+def test_windows_color_limit_is_always_shown_with_its_state_and_can_be_locked_again():
+    """The row stays in Settings whatever the state, says whether the limit
+    is locked or unlocked and whether that's in effect yet, and its button
+    unlocks, or locks again (both through the administrator prompt)."""
     state = {"unlocked": False, "warmest": {}}
-    outcomes = iter(["cancelled", "done"])
+    unlocks = iter(["cancelled", "done"])
+    locks = iter(["done", "cancelled"])
 
     def unlock():
-        outcome = next(outcomes)
+        outcome = next(unlocks)
         if outcome == "done":
             state["unlocked"] = True
         return outcome
 
+    def lock():
+        outcome = next(locks)
+        if outcome == "done":
+            state["unlocked"] = False
+        return outcome
+
     controller = NightLightController(FakeGamma(), KYIV, lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
     window = SettingsWindow(controller, AppConfig(KYIV), warmest=lambda: state["warmest"], display_name=lambda name: "Laptop",
-                            unlock_warmer=unlock, warmer_unlocked=lambda: state["unlocked"])
-    row = window._unlock_row
-    assert row.isHidden()  # no limit known
+                            unlock_warmer=unlock, lock_warmer=lock, warmer_unlocked=lambda: state["unlocked"])
+    row, button = window._unlock_row, window.unlock_warmer
+
+    def text():
+        return row.description.text()
+
+    window._update_windows_limit()
+    assert not row.isHidden() and button.text() == "Unlock…"  # shown even with no limit in the way
+    assert text().startswith("Locked (Windows' default)")
     window.night_temperature.setValue(2700)
     state["warmest"] = {r"\.\DISPLAY1": 3300}
     window._update_windows_limit()
-    assert not row.isHidden() and window.unlock_warmer.isVisibleTo(window)
-    window.unlock_warmer.click()  # the prompt is declined
-    assert row.description.text().startswith("Nothing was changed")
-    window.unlock_warmer.click()  # approved, but Windows still refuses: it needs signing in again
-    assert "sign out" in row.description.text() and not window.unlock_warmer.isVisibleTo(window)
-    state["warmest"] = {}
+    assert text().startswith("Locked: Windows holds night light back (Laptop)")
+    button.click()  # the prompt is declined
+    assert text().startswith("Nothing was changed") and button.text() == "Unlock…"
+    button.click()  # approved, but Windows still refuses until signing in again
+    assert text().startswith("Unlocked, but not in effect yet") and button.text() == "Lock again…"
+    state["warmest"] = {}  # after signing in again: no limit
     window._update_windows_limit()
-    assert row.isHidden()
+    assert text().startswith("Unlocked: night light can go as warm as you set it") and not row.isHidden()
+    button.click()  # lock again, approved
+    assert text().startswith("Locked again: Windows puts its limit back after you sign out") and button.isHidden()
+    state["warmest"] = {r"\.\DISPLAY1": 3300}  # signed in again: Windows limits again
+    window._locked_again = False
+    window._update_windows_limit()
+    assert text().startswith("Locked: Windows holds night light back") and button.text() == "Unlock…"
+    state["unlocked"] = True  # unlocked elsewhere (f.lux, LightBulb): shown as it is
+    window._update_windows_limit()
+    assert button.text() == "Lock again…"
+    button.click()  # locking again declined
+    assert text().startswith("Nothing was changed") and button.text() == "Lock again…"
     controller.shutdown()
 
 
-def test_without_unlocking_there_is_no_offer(window):
+def test_without_unlocking_there_is_no_row(window):
+    """Not on Windows (nothing to unlock there): no row."""
     window._warmest = lambda: {r"\.\DISPLAY1": 3300}
     window.night_temperature.setValue(2700)
     window._update_windows_limit()

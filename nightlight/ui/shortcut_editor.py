@@ -246,8 +246,8 @@ class ShortcutEditor(Card):
         self._rows_layout = QVBoxLayout(holder)
         self._rows_layout.setContentsMargins(0, 2, 0, 0)
         self._rows_layout.setSpacing(16)
-        self.add(SettingRow("Keyboard shortcuts", "Work in any app. A shortcut changes the displays the way the panel "
-                            "does; hidden displays are left alone", self.add_button, below=holder))
+        self.add(SettingRow("Keyboard shortcuts", "Shortcuts work in any app. A shortcut changes the displays the way "
+                            "the panel does; hidden displays are left alone", self.add_button, below=holder))
 
     def set_shortcuts(self, shortcuts: tuple[Shortcut, ...]) -> None:
         for row in self.rows:

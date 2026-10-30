@@ -76,6 +76,24 @@ def test_the_uninstaller_deletes_the_data_folder_the_app_uses_by_default():
     assert directives <= {"#ifndef", "#error", "#endif"}, directives
 
 
+def test_the_uninstaller_offers_to_put_windows_color_limit_back_without_pushing_it():
+    """Windows' color limit is machine-wide, and f.lux or LightBulb may rely
+    on it unlocked: the uninstaller only offers to lock it again (No by
+    default), only when it's unlocked, never silently, and removes the same
+    value the app sets."""
+    from nightlight.hardware import win32
+
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    assert f"IcmKey = '{win32.GAMMA_RANGE_KEY}';" in script and f"GammaRangeValue = '{win32.GAMMA_RANGE_VALUE}';" in script
+    assert f"(Value = {win32.EXPANDED_GAMMA_RANGE})" in script
+    asked = script.split("LockColorLimit := False;")[1].split("Result := True;")[0]
+    assert "if not UninstallSilent and ColorLimitUnlocked() then" in asked and "MB_YESNO or MB_DEFBUTTON2) = IDYES" in asked
+    assert "f.lux" in asked and "LightBulb" in asked  # the disclaimer
+    assert "'delete \"HKLM\\' + IcmKey + '\" /v ' + GammaRangeValue + ' /f'" in script and "ShellExec('runas'" in script
+    post = script.split("if CurUninstallStep = usPostUninstall then")[1]
+    assert "if LockColorLimit then" in post
+
+
 def test_checksums_are_written_as_sha256sum_reads_them(tmp_path):
     import hashlib
 

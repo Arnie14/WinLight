@@ -135,8 +135,22 @@ begin
   end;
 end;
 
+const
+  IcmKey = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM';
+  GammaRangeValue = 'GdiIcmGammaRange';
+
 var
   DeleteSettings: Boolean;
+  LockColorLimit: Boolean;
+
+{ Whether Windows' color limit is unlocked (GdiIcmGammaRange = 256), as
+  Winlight's "Unlock" in Settings, f.lux and LightBulb set it. }
+function ColorLimitUnlocked(): Boolean;
+var
+  Value: Cardinal;
+begin
+  Result := RegQueryDWordValue(HKLM64, IcmKey, GammaRangeValue, Value) and (Value = 256);
+end;
 
 { Asked first, before anything is removed. An uninstall is a full uninstall,
   so deleting is the default, also when uninstalling silently (winget,
@@ -152,7 +166,31 @@ begin
       'If you reinstall Winlight later, it starts with default settings: deleted settings can''t be brought back.' + #13#10#13#10 +
       'Choose No to keep them for reinstalling.',
       mbConfirmation, MB_YESNO) = IDYES;
+  { Windows' color limit is machine-wide and may be another app's too, so
+    it's only offered, No by default, and never changed silently (it needs
+    Windows' administrator prompt anyway). }
+  LockColorLimit := False;
+  if not UninstallSilent and ColorLimitUnlocked() then
+    LockColorLimit := MsgBox('Put Windows'' color limit back?' + #13#10#13#10 +
+      'Windows'' limit on how far apps can change screen colors is unlocked on this PC (the GdiIcmGammaRange ' +
+      'setting), so night light can go warmer than Windows allows by default. Winlight''s "Unlock" in Settings ' +
+      'sets it, and so do f.lux and LightBulb.' + #13#10#13#10 +
+      'Choose Yes to put the limit back: Windows asks for administrator approval, and applies it after you sign out. ' +
+      'Choose No if you use f.lux, LightBulb or another night light app: with the limit back, they stop short of ' +
+      'their warmest colors too.',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
   Result := True;
+end;
+
+procedure LockColorLimitAgain();
+var
+  ResultCode: Integer;
+begin
+  if not ShellExec('runas', ExpandConstant('{sys}\reg.exe'),
+      'delete "HKLM\' + IcmKey + '" /v ' + GammaRangeValue + ' /f', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Log('Windows'' color limit: the administrator prompt was declined or failed; left unlocked')
+  else
+    Log(Format('Windows'' color limit: reg.exe ended with %d', [ResultCode]));
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -167,6 +205,8 @@ begin
     RegDeleteValue(HKEY_CURRENT_USER, RunKey, 'Winlight');
     RegDeleteValue(HKEY_CURRENT_USER, ApprovedKey, 'Winlight');
     RemoveFromPath(ExpandConstant('{app}'));
+    if LockColorLimit then
+      LockColorLimitAgain();
     if DeleteSettings then
     begin
       { The data folder, and its name before 0.3.0 if an old version left it. }

@@ -924,33 +924,56 @@ def gamma_range_expanded() -> bool:
 def expand_gamma_range(parent_window: int = 0) -> str:
     """Set the value: "done", "cancelled" (the administrator prompt was
     declined: nothing changed) or "failed". Blocks while the prompt is open."""
+    return _change_gamma_range(True, parent_window)
+
+
+def restore_gamma_range(parent_window: int = 0) -> str:
+    """Remove the value again: Windows' own limit after the next sign-in.
+    "done", "cancelled" or "failed", as expand_gamma_range."""
+    return _change_gamma_range(False, parent_window)
+
+
+def _change_gamma_range(expand: bool, parent_window: int) -> str:
     import os
     import winreg
 
+    what = "set" if expand else "remove"
     try:
-        with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, GAMMA_RANGE_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, GAMMA_RANGE_VALUE, 0, winreg.REG_DWORD, EXPANDED_GAMMA_RANGE)
+        if expand:
+            with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, GAMMA_RANGE_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, GAMMA_RANGE_VALUE, 0, winreg.REG_DWORD, EXPANDED_GAMMA_RANGE)
+        else:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, GAMMA_RANGE_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, GAMMA_RANGE_VALUE)
         return "done"
+    except FileNotFoundError:
+        return "done"  # removing a value that isn't there: Windows' limit already
     except PermissionError:
         pass  # not running as administrator, as usual: ask through reg.exe
     except OSError:
-        log.warning("Could not set %s", GAMMA_RANGE_VALUE, exc_info=True)
+        log.warning("Could not %s %s", what, GAMMA_RANGE_VALUE, exc_info=True)
         return "failed"
     # By its full path: one found on PATH could be anyone's.
     reg = str(Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "reg.exe")
-    arguments = (f'add "HKLM\\{GAMMA_RANGE_KEY}" /v {GAMMA_RANGE_VALUE} /t REG_DWORD /d {EXPANDED_GAMMA_RANGE} /f')
+    if expand:
+        arguments = f'add "HKLM\\{GAMMA_RANGE_KEY}" /v {GAMMA_RANGE_VALUE} /t REG_DWORD /d {EXPANDED_GAMMA_RANGE} /f'
+    else:
+        arguments = f'delete "HKLM\\{GAMMA_RANGE_KEY}" /v {GAMMA_RANGE_VALUE} /f'
     try:
         exit_code = run_elevated(reg, arguments, parent_window)
     except OSError as exc:
-        log.warning("Could not run reg.exe to set %s: %s", GAMMA_RANGE_VALUE, exc)
+        log.warning("Could not run reg.exe to %s %s: %s", what, GAMMA_RANGE_VALUE, exc)
         return "failed"
     if exit_code is None:
-        log.info("Unlocking warmer colors: the administrator prompt was declined; nothing changed")
+        log.info("%s warmer colors: the administrator prompt was declined; nothing changed", "Unlocking" if expand else "Locking")
         return "cancelled"
-    if exit_code != 0 or not gamma_range_expanded():
-        log.warning("reg.exe ended with %s, and %s isn't set", exit_code, GAMMA_RANGE_VALUE)
+    if exit_code != 0 or gamma_range_expanded() != expand:
+        log.warning("reg.exe ended with %s, and %s isn't %s", exit_code, GAMMA_RANGE_VALUE, "set" if expand else "removed")
         return "failed"
-    log.info("Set %s to %d: Windows accepts warmer gamma ramps", GAMMA_RANGE_VALUE, EXPANDED_GAMMA_RANGE)
+    if expand:
+        log.info("Set %s to %d: Windows accepts warmer gamma ramps", GAMMA_RANGE_VALUE, EXPANDED_GAMMA_RANGE)
+    else:
+        log.info("Removed %s: Windows' own limit on gamma ramps from the next sign-in", GAMMA_RANGE_VALUE)
     return "done"
 
 

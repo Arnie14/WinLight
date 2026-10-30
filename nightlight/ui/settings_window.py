@@ -114,15 +114,26 @@ SLEEP_ADVICE = (
 # 5 minutes of the day every 50 ms: a day in 15 to 20 seconds (Windows' timers run late).
 DAY_PREVIEW_TICK_MS = 50
 DAY_PREVIEW_STEP = timedelta(minutes=5)
-# Unlocking warmer colors (win32.expand_gamma_range), worded after LightBulb's
-# "Limited gamma range" message.
-UNLOCK_DESCRIPTION = ("Windows limits how far colors can be changed, so night light stops early. Unlocking sets the "
-                      "GdiIcmGammaRange setting, as f.lux and LightBulb do, after Windows asks for administrator approval")
-UNLOCKED_DESCRIPTION = ("Unlocked. If night light still stops early, Windows applies it after you sign out and back in, "
-                        "or restart")
-UNLOCK_OUTCOMES = {
+# Windows' limit on how far colors can change (win32.expand_gamma_range and
+# restore_gamma_range), worded after LightBulb's "Limited gamma range" message.
+# The row always shows the limit's state: locked or unlocked, and whether
+# that's in effect yet (Windows applies a change at the next sign-in).
+HOW_UNLOCKING_WORKS = ("Unlocking sets the GdiIcmGammaRange setting, as f.lux and LightBulb do, after Windows asks for "
+                       "administrator approval")
+LIMIT_STATES = {
+    ("locked", True): "Locked: Windows holds night light back ({displays}). " + HOW_UNLOCKING_WORKS,
+    ("locked", False): ("Locked (Windows' default): it isn't holding night light back at this temperature. If night "
+                        "light stops short of a warmer one, unlock it. " + HOW_UNLOCKING_WORKS),
+    ("unlocked", True): ("Unlocked, but not in effect yet: Windows applies it after you sign out and back in, or "
+                         "restart"),
+    ("unlocked", False): ("Unlocked: night light can go as warm as you set it. Locking again puts Windows' limit back "
+                          "(after you sign out); f.lux and LightBulb use the same setting"),
+    ("locked again", False): ("Locked again: Windows puts its limit back after you sign out and back in, or "
+                              "restart. Until then night light can still go as warm as you set it"),
+}
+LIMIT_OUTCOMES = {
     "cancelled": "Nothing was changed: the administrator prompt was declined.",
-    "failed": "It couldn't be unlocked; the log says why.",
+    "failed": "It couldn't be changed; the log says why.",
 }
 GAMMA_BUSY = "A change to the display colors is stuck, probably in the display driver. Try again in a moment."
 # When "never pause late at night" starts (config.NEVER_PAUSE_FROM).
@@ -153,6 +164,7 @@ class SettingsWindow(QWidget):
         reload_calibrations: Callable[[], dict[str, str]] | None = None,
         forget_calibrations: Callable[[], int] | None = None,
         unlock_warmer: Callable[[], str] | None = None,
+        lock_warmer: Callable[[], str] | None = None,
         warmer_unlocked: Callable[[], bool] = lambda: False,
         shortcut_status: Callable[[str], str] | None = None,
         pause_shortcuts: Callable[[bool], None] | None = None,
@@ -173,13 +185,15 @@ class SettingsWindow(QWidget):
         self._check_updates = check_updates  # UpdateChecker.check_now
         self._reload_calibrations = reload_calibrations
         self._unlock_warmer = unlock_warmer  # sets GdiIcmGammaRange: "done", "cancelled" or "failed"
+        self._lock_warmer = lock_warmer  # removes it again, likewise
         # Shortcuts: Windows' answer for each (ShortcutService.status), and letting
         # go of them while one is recorded (ShortcutService.pause).
         self._shortcut_status = shortcut_status or (lambda _keys: "")
         self._pause_shortcuts = pause_shortcuts
         self._recording = False
         self._warmer_unlocked = warmer_unlocked
-        self._unlock_outcome = ""
+        self._unlock_outcome = ""  # how the last Unlock or Lock again went
+        self._locked_again = False  # locked again since Windows last applied the limit (at sign-in)
         self._preview_notice: PreviewNotice | None = None  # made when a slider is first held
         # The 24-hour preview: the moment shown now, and when it ends.
         self._day_at: datetime | None = None
@@ -521,8 +535,8 @@ class SettingsWindow(QWidget):
                                                                                          self.day_temperature))
         self._night_row = self._temperature_card.add(SettingRow("Night", NIGHT_DESCRIPTION, self.night_temperature))
         self.unlock_warmer = QPushButton("Unlock…")
-        self.unlock_warmer.clicked.connect(self._unlock)
-        self._unlock_row = self._temperature_card.add(SettingRow("Warmer night light", UNLOCK_DESCRIPTION, self.unlock_warmer))
+        self.unlock_warmer.clicked.connect(self._unlock_or_lock)
+        self._unlock_row = self._temperature_card.add(SettingRow("Windows' color limit", HOW_UNLOCKING_WORKS, self.unlock_warmer))
         layout.addWidget(self._temperature_card)
         self.schedule_info.setContentsMargins(4, 10, 4, 0)
         layout.addWidget(self.schedule_info)
@@ -683,8 +697,10 @@ class SettingsWindow(QWidget):
         layout.addWidget(appearance)
         layout.addWidget(SectionLabel("Focus"))
         focus = Card()
-        focus.add(SettingRow("Never open over fullscreen apps", f"{APP_NAME} won't open windows by itself while a game, "
-                             "video or presentation is fullscreen", self.respect_fullscreen))
+        focus.add(SettingRow("Never open over fullscreen apps", f"{APP_NAME} won't open its own windows by itself (the panel, "
+                             "Settings at sign-in, hints) while a game, video or presentation is fullscreen, so it can't "
+                             "take focus or minimize a game. It doesn't change night light: pausing night light for "
+                             "fullscreen apps is on the Night Light page", self.respect_fullscreen))
         layout.addWidget(focus)
         layout.addWidget(SectionLabel("Updates"))
         updates = Card()
@@ -920,18 +936,28 @@ class SettingsWindow(QWidget):
         limited = limited_displays(self.night_temperature.value(), self._warmest())
         notes = [f"{self._display_name(name)}: {kelvin} K (Windows limit)" for name, kelvin in sorted(limited.items())]
         self._night_row.set_description(NIGHT_DESCRIPTION + (". " + "; ".join(notes) if notes else ""))
-        # Unlocking warmer colors, while Windows holds a display back.
-        unlocked = bool(limited) and self._warmer_unlocked()
-        self._temperature_card.set_row_visible(self._unlock_row, bool(limited) and self._unlock_warmer is not None)
-        self.unlock_warmer.setVisible(not unlocked)
-        row = self._unlock_row
+        # Windows' color limit: always shown (on Windows), with its state.
+        self._temperature_card.set_row_visible(self._unlock_row, self._unlock_warmer is not None)
+        unlocked = self._warmer_unlocked()
         if unlocked:
-            row.set_description(UNLOCKED_DESCRIPTION)
-        else:
-            row.set_description(" ".join(part for part in (UNLOCK_OUTCOMES.get(self._unlock_outcome, ""), UNLOCK_DESCRIPTION) if part))
+            self._locked_again = False
+        state = "unlocked" if unlocked else "locked again" if self._locked_again else "locked"
+        held_back = bool(limited) and state != "locked again"
+        displays = ", ".join(self._display_name(name) for name in sorted(limited))
+        text = LIMIT_STATES[(state, held_back)].format(displays=displays)
+        self._unlock_row.set_description(" ".join(part for part in (LIMIT_OUTCOMES.get(self._unlock_outcome, ""), text) if part))
+        self.unlock_warmer.setText("Lock again…" if unlocked else "Unlock…")
+        self.unlock_warmer.setVisible(unlocked or not self._locked_again)
+        self.unlock_warmer.setToolTip("Puts Windows' limit back (asks for administrator approval)" if unlocked
+                                      else "Lets night light go warmer (asks for administrator approval)")
 
-    def _unlock(self) -> None:
-        self._unlock_outcome = self._unlock_warmer() if self._unlock_warmer is not None else ""
+    def _unlock_or_lock(self) -> None:
+        if self._warmer_unlocked():
+            outcome = self._lock_warmer() if self._lock_warmer is not None else ""
+            self._locked_again = outcome == "done"
+        else:
+            outcome = self._unlock_warmer() if self._unlock_warmer is not None else ""
+        self._unlock_outcome = "" if outcome == "done" else outcome
         self._update_windows_limit()
 
     def _use_sleep_warmth(self) -> None:
