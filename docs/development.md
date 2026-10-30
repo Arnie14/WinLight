@@ -96,6 +96,7 @@ The README screenshots come from `python tools/screenshots.py` (demo displays, l
 - **Versions** are `MAJOR.MINOR.PATCH`, optionally followed by `-alpha.N`, `-beta.N`, `-rc.N` or `-dev`, set in `nightlight/__init__.py`. Windows' file version takes four numbers; the fourth orders pre-releases before their release: `alpha.N` is 1000 + N, `beta.N` 2000 + N, `rc.N` 3000 + N, the release 9000 and a dev build 0. So `0.3.0-beta.1` is file version `0.3.0.2001`, and the product version keeps the readable form.
 - **The installer's AppId** (`packaging/winlight.iss`) never changes: upgrades and the uninstaller find the installed copy by it, and a test pins it.
 - **Releasing:** push a tag such as `v0.3.0-beta.1`. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) lints, tests, builds on Windows and publishes a release titled "Winlight 0.3.0 Beta 1". Tags with `-alpha`, `-rc` or `-dev` become pre-releases. A push to `main`, or running the workflow by hand, builds the files as a downloadable artifact without a release.
+- **Every other push and every pull request** is linted and tested on Windows by [`.github/workflows/tests.yml`](../.github/workflows/tests.yml), without building; failures show as annotations on the pull request.
 - [CHANGELOG.md](../CHANGELOG.md) records each version's changes.
 
 ## Repository layout
@@ -137,7 +138,7 @@ tools/                      hardware_checks.py, third_party_notices.py, screensh
 tests/                      pytest suite
 docs/                       features, why-winlight, command-line, windows-notes, test plans, development;
                             history/ (earlier reports); plans/ (work not started yet: msix-package); screenshots/
-.github/workflows/          release.yml: lint, test, build and publish
+.github/workflows/          release.yml: lint, test, build and publish; tests.yml: lint and test other pushes and pull requests
 ```
 
 Settings, state and logs live in `%LOCALAPPDATA%\WinLight` (`Logs\` for the log, `probe.txt` and `compatibility.txt`, `Reports\` for Report a Problem zips).

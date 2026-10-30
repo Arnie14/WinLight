@@ -15,7 +15,7 @@ so their layout can be unit-tested; the functions need Windows.
 This module is the adapter between the app and Windows: the backends in
 windows.py only call the functions here (see DisplayApi there), so tests can
 replace it with a fake. ctypes is unforgiving, so the module also checks
-itself at run time: structure sizes against the SDK's (layout_problems),
+itself at run time: structure sizes and field offsets against the SDK's (layout_problems),
 which optional APIs this Windows has (capabilities), and it turns error
 codes into explanations for the log (describe_error).
 """
@@ -1053,16 +1053,71 @@ WINDOWS_ONLY_SIZES = {
     "DISPLAY_DEVICEW": (DISPLAY_DEVICEW, 840),
     "SHELLEXECUTEINFOW": (SHELLEXECUTEINFOW, 112 if _POINTER == 8 else 60),
 }
+# Where each field starts, worked out from the SDK headers' declarations
+# (wingdi.h, WinUser.h, shellapi.h, PhysicalMonitorEnumerationAPI.h) by C's
+# alignment rules, not from the classes above. A field of the wrong type, or
+# two fields swapped, can leave the size right while every field after it is
+# read from, or written to, the wrong place.
+EXPECTED_OFFSETS = {
+    "LUID": (LUID, {"LowPart": 0, "HighPart": 4}),
+    "DISPLAYCONFIG_RATIONAL": (DISPLAYCONFIG_RATIONAL, {"Numerator": 0, "Denominator": 4}),
+    "DISPLAYCONFIG_PATH_SOURCE_INFO": (DISPLAYCONFIG_PATH_SOURCE_INFO,
+                                       {"adapterId": 0, "id": 8, "modeInfoIdx": 12, "statusFlags": 16}),
+    "DISPLAYCONFIG_PATH_TARGET_INFO": (DISPLAYCONFIG_PATH_TARGET_INFO, {
+        "adapterId": 0, "id": 8, "modeInfoIdx": 12, "outputTechnology": 16, "rotation": 20, "scaling": 24,
+        "refreshRate": 28, "scanLineOrdering": 36, "targetAvailable": 40, "statusFlags": 44}),
+    "DISPLAYCONFIG_PATH_INFO": (DISPLAYCONFIG_PATH_INFO, {"sourceInfo": 0, "targetInfo": 20, "flags": 68}),
+    "DISPLAYCONFIG_MODE_INFO": (DISPLAYCONFIG_MODE_INFO, {"infoType": 0, "id": 4, "adapterId": 8, "mode": 16}),
+    "DISPLAYCONFIG_DEVICE_INFO_HEADER": (DISPLAYCONFIG_DEVICE_INFO_HEADER, {"type": 0, "size": 4, "adapterId": 8, "id": 16}),
+    "DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO": (DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO,
+                                              {"header": 0, "value": 20, "colorEncoding": 24, "bitsPerColorChannel": 28}),
+    "DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2": (DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2, {
+        "header": 0, "value": 20, "colorEncoding": 24, "bitsPerColorChannel": 28, "activeColorMode": 32}),
+    "DISPLAYCONFIG_SDR_WHITE_LEVEL": (DISPLAYCONFIG_SDR_WHITE_LEVEL, {"header": 0, "SDRWhiteLevel": 20}),
+    # Undocumented: as Twinkle Tray and Monitorian declare it.
+    "DISPLAYCONFIG_SET_SDR_WHITE_LEVEL": (DISPLAYCONFIG_SET_SDR_WHITE_LEVEL, {"header": 0, "SDRWhiteLevel": 20, "finalValue": 24}),
+}
+WINDOWS_ONLY_OFFSETS = {
+    "DISPLAYCONFIG_SOURCE_DEVICE_NAME": (DISPLAYCONFIG_SOURCE_DEVICE_NAME, {"header": 0, "viewGdiDeviceName": 20}),
+    "DISPLAYCONFIG_TARGET_DEVICE_NAME": (DISPLAYCONFIG_TARGET_DEVICE_NAME, {
+        "header": 0, "flags": 20, "outputTechnology": 24, "edidManufactureId": 28, "edidProductCodeId": 30,
+        "connectorInstance": 32, "monitorFriendlyDeviceName": 36, "monitorDevicePath": 164}),
+    "MONITORINFOEXW": (MONITORINFOEXW, {"cbSize": 0, "rcMonitor": 4, "rcWork": 20, "dwFlags": 36, "szDevice": 40}),
+    "PHYSICAL_MONITOR": (PHYSICAL_MONITOR, {"hPhysicalMonitor": 0, "szPhysicalMonitorDescription": _POINTER}),  # packed
+    "DISPLAY_DEVICEW": (DISPLAY_DEVICEW, {"cb": 0, "DeviceName": 4, "DeviceString": 68, "StateFlags": 324, "DeviceID": 328,
+                                          "DeviceKey": 584}),
+    "SHELLEXECUTEINFOW": (SHELLEXECUTEINFOW, dict(zip(
+        ("cbSize", "fMask", "hwnd", "lpVerb", "lpFile", "lpParameters", "lpDirectory", "nShow", "hInstApp", "lpIDList",
+         "lpClass", "hkeyClass", "dwHotKey", "hIconOrMonitor", "hProcess"),
+        (0, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104) if _POINTER == 8
+        else (0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56), strict=True))),
+}
 # Which feature each structure is needed for, to turn off only that feature.
 _STRUCT_FEATURE = {"PHYSICAL_MONITOR": "ddc", "MONITORINFOEXW": "ddc"}
 
 
+def offset_problems(table: dict[str, tuple[type, dict[str, int]]]) -> list[str]:
+    """Fields not where the table says, as "NAME.field is at 4, expected 0"."""
+    problems = []
+    for name, (cls, offsets) in table.items():
+        fields = {field for field, *_ in cls._fields_}
+        for field, expected in offsets.items():
+            if field not in fields:
+                problems.append(f"{name}.{field} is missing")
+            elif (actual := getattr(cls, field).offset) != expected:
+                problems.append(f"{name}.{field} is at {actual}, expected {expected}")
+    return problems
+
+
 def layout_problems() -> list[str]:
-    """Structures whose size doesn't match the SDK's; empty when all is well."""
-    checks = dict(EXPECTED_SIZES)
+    """Structures whose size or field offsets don't match the SDK's; empty when all is well."""
+    checks, offsets = dict(EXPECTED_SIZES), dict(EXPECTED_OFFSETS)
     if sys.platform == "win32":
         checks.update(WINDOWS_ONLY_SIZES)
-    return [f"{name} is {ctypes.sizeof(cls)} bytes, expected {size}" for name, (cls, size) in checks.items() if ctypes.sizeof(cls) != size]
+        offsets.update(WINDOWS_ONLY_OFFSETS)
+    sizes = [f"{name} is {ctypes.sizeof(cls)} bytes, expected {size}" for name, (cls, size) in checks.items()
+             if ctypes.sizeof(cls) != size]
+    return sizes + offset_problems(offsets)
 
 
 _disabled_features: set[str] = set()
@@ -1072,7 +1127,7 @@ def self_check() -> list[str]:
     """Check the structure layouts once at startup; log and turn off what is broken."""
     problems = layout_problems()
     for problem in problems:
-        name = problem.split(" ", 1)[0]
+        name = problem.split(" ", 1)[0].split(".", 1)[0]
         feature = _STRUCT_FEATURE.get(name, "display configuration")
         _disabled_features.add(feature)
         log.error("ctypes layout problem: %s; turning off %s to stay safe", problem, feature)

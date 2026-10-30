@@ -27,6 +27,13 @@ VCGT = b"vcgt"
 WCS = b"MS00"
 
 
+# Gammas a real calibration uses are near 1 (DCCW's run from about 0.5 to 2;
+# a vcgt formula's are corrections, nearer still). Outside this range a
+# "calibration" darkens all but the very top of the ramp, which reaches full,
+# so it would pass as plausible and black the screen out: refused instead.
+GAMMA_RANGE = (0.1, 10.0)
+
+
 class UnreadableCalibration(ValueError):
     """The profile has a calibration in a form this module doesn't read."""
 
@@ -82,7 +89,7 @@ def _vcgt(data: bytes, size: int) -> list[list[int]]:
         values = [v / 65536 for v in struct.unpack_from(">9i", data, 12)]
         ramps = []
         for gamma, low, high in (values[0:3], values[3:6], values[6:9]):
-            if gamma <= 0:
+            if not GAMMA_RANGE[0] <= gamma <= GAMMA_RANGE[1]:
                 raise UnreadableCalibration(f"vcgt formula with gamma {gamma}")
             ramps.append(_ramp(lambda x, g=gamma, lo=low, hi=high: lo + (hi - lo) * x ** g, size))
         return ramps
@@ -113,7 +120,9 @@ def _wcs(data: bytes, size: int) -> list[list[int]] | None:
             offset = float(values.get("Offset1", "0"))
         except (KeyError, ValueError):
             raise UnreadableCalibration(f"a Windows calibration curve without a gamma: {attributes.strip()}") from None
-        if gamma <= 0 or abs(gain - 1) > 1e-6 or abs(offset) > 1e-6:
+        if not GAMMA_RANGE[0] <= gamma <= GAMMA_RANGE[1]:  # also nan and inf
+            raise UnreadableCalibration(f"a Windows calibration curve with gamma {gamma}")
+        if abs(gain - 1) > 1e-6 or abs(offset) > 1e-6:
             raise UnreadableCalibration(f"a Windows calibration curve with gain {gain} and offset {offset}")
         curves[channel] = _ramp(lambda x, g=gamma: x ** g, size)
     if set(curves) != {"Red", "Green", "Blue"}:

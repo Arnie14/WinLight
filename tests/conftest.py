@@ -6,7 +6,15 @@ import pytest
 # No windows are shown, so tests also run without a display (CI, SSH).
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from hypothesis import settings
 from PySide6.QtWidgets import QApplication
+
+# Property-based tests (hypothesis) run the same cases every time, as the
+# suite's seeded random tests do, so a failure repeats exactly; and keep no
+# example database (no .hypothesis folder). No deadline: a slow CI machine
+# isn't a failure.
+settings.register_profile("winlight", derandomize=True, database=None, deadline=None, print_blob=True)
+settings.load_profile("winlight")
 
 
 @pytest.fixture(scope="session", autouse=True)

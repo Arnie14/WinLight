@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.15"]
+dev = ["pytest>=8.0", "ruff>=0.15", "hypothesis>=6.100"]
 # Building the Windows app (packaging/build.py). Inno Setup 6 is installed
 # separately for the installer: https://jrsoftware.org/isdl.php
 build = ["pyinstaller>=6.10"]

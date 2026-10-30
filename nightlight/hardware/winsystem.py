@@ -235,15 +235,14 @@ def ticks_since(now: int, then: int) -> int:
     return (now - then) & 0xFFFFFFFF
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint32), ("dwTime", ctypes.c_uint32)]  # UINT, DWORD
+
+
 def idle_seconds() -> float:
     """How long since the last keyboard or mouse input in this session."""
     if sys.platform != "win32":
         return 0.0
-    from ctypes import wintypes
-
-    class LASTINPUTINFO(ctypes.Structure):
-        _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
-
     info = LASTINPUTINFO(cbSize=ctypes.sizeof(LASTINPUTINFO))
     if not _user32.GetLastInputInfo(ctypes.byref(info)):
         return 0.0
@@ -680,6 +679,27 @@ class _GUID(ctypes.Structure):
 
 class _POWERBROADCAST_SETTING(ctypes.Structure):
     _fields_ = [("PowerSetting", _GUID), ("DataLength", ctypes.c_uint32), ("Data", ctypes.c_ubyte)]
+
+
+# Where each field starts, from the SDK's declarations (WinUser.h, guiddef.h),
+# as hardware/win32.py checks its own: the power broadcast's Data is read
+# from raw memory at its offset.
+EXPECTED_OFFSETS = {
+    "LASTINPUTINFO": (LASTINPUTINFO, {"cbSize": 0, "dwTime": 4}),
+    "_GUID": (_GUID, {"Data1": 0, "Data2": 4, "Data3": 6, "Data4": 8}),
+    "_POWERBROADCAST_SETTING": (_POWERBROADCAST_SETTING, {"PowerSetting": 0, "DataLength": 16, "Data": 20}),
+}
+EXPECTED_SIZES = {"LASTINPUTINFO": 8, "_GUID": 16, "_POWERBROADCAST_SETTING": 24}
+
+
+def layout_problems() -> list[str]:
+    """Structures whose size or field offsets don't match the SDK's."""
+    problems = [f"{name} is {ctypes.sizeof(cls)} bytes, expected {EXPECTED_SIZES[name]}"
+                for name, (cls, _offsets) in EXPECTED_OFFSETS.items() if ctypes.sizeof(cls) != EXPECTED_SIZES[name]]
+    for name, (cls, offsets) in EXPECTED_OFFSETS.items():
+        problems += [f"{name}.{field} is at {getattr(cls, field).offset}, expected {expected}"
+                     for field, expected in offsets.items() if getattr(cls, field).offset != expected]
+    return problems
 
 
 if sys.platform == "win32":

@@ -79,6 +79,44 @@ def test_every_structure_matches_the_sdk_layout():
     assert win32.self_check() == []
 
 
+def _structures(module) -> dict[str, type]:
+    import ast
+    import inspect
+
+    found = {}
+    for node in ast.walk(ast.parse(inspect.getsource(module))):
+        if isinstance(node, ast.ClassDef) and any(ast.unparse(base) in ("ctypes.Structure", "ctypes.Union") for base in node.bases):
+            found[node.name] = getattr(module, node.name, None)
+    return found
+
+
+def test_every_native_structure_has_its_field_offsets_checked():
+    """A field of the wrong type, or two fields swapped, can leave a
+    structure's size right while every field after it is read from (or
+    written to) the wrong place: each field's offset is checked too, against
+    offsets worked out from the SDK's declarations."""
+    from nightlight.hardware import winsystem
+
+    checked = {**win32.EXPECTED_OFFSETS, **win32.WINDOWS_ONLY_OFFSETS}
+    for module, table in ((win32, checked), (winsystem, winsystem.EXPECTED_OFFSETS)):
+        for name, cls in _structures(module).items():
+            assert cls is not None, f"{name} is defined inside a function: move it to the module to check it"
+            assert name in table, f"{module.__name__}.{name} has no expected offsets"
+            assert set(table[name][1]) == {field for field, *_ in cls._fields_}, f"{name}: every field is listed"
+    assert winsystem.layout_problems() == []
+
+
+def test_a_field_in_the_wrong_place_is_found(monkeypatch):
+    class Swapped(ctypes.Structure):  # the same size as the SDK's header, two fields swapped
+        _fields_ = [("size", ctypes.c_uint32), ("type", ctypes.c_uint32), ("adapterId", win32.LUID), ("id", ctypes.c_uint32)]
+
+    expected = win32.EXPECTED_OFFSETS["DISPLAYCONFIG_DEVICE_INFO_HEADER"][1]
+    monkeypatch.setitem(win32.EXPECTED_OFFSETS, "DISPLAYCONFIG_DEVICE_INFO_HEADER", (Swapped, expected))
+    problems = win32.layout_problems()
+    assert "DISPLAYCONFIG_DEVICE_INFO_HEADER.type is at 4, expected 0" in problems
+    assert ctypes.sizeof(Swapped) == 20  # the size alone wouldn't have told
+
+
 def test_error_codes_are_explained():
     text = win32.describe_error(win32.ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_COMMAND)
     assert text.startswith("0xC0262589") and "DDC/CI may be off" in text
