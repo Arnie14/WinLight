@@ -42,6 +42,13 @@ nightlight = ["data/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers"]
+# An exception in a thread, or in a finalizer (__del__), fails the test that
+# caused it instead of being printed and forgotten.
+filterwarnings = [
+    "error::pytest.PytestUnhandledThreadExceptionWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
 
 [tool.ruff]
 line-length = 160

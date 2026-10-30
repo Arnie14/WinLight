@@ -11,7 +11,7 @@ that has started, which handles schedules that cross midnight.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, tzinfo
 from enum import StrEnum
 from functools import lru_cache
@@ -122,7 +122,8 @@ def pausing_held(config: NightLightConfig, now: datetime, zone: tzinfo | None = 
     since = max((start for start in starts if start <= now), default=None)
     if since is None:
         return False
-    morning = next((t.start for t in transitions if not t.to_night and t.start > since), None)
+    # >=: an evening shortened to end as the morning starts holds nothing.
+    morning = next((t.start for t in transitions if not t.to_night and t.start >= since), None)
     return morning is None or now < morning
 
 
@@ -139,7 +140,14 @@ def schedule_around(config: NightLightConfig, now: datetime, zone: tzinfo | None
     else:
         duration = timedelta(minutes=config.transition_minutes)
         transitions = _timed_schedule(parse_hhmm(config.day_start), parse_hhmm(config.night_start), duration, days, tz)
-    return sorted(transitions, key=lambda t: t.start)
+    transitions.sort(key=lambda t: t.start)
+    # A change never runs past the next one's start. When the morning starts
+    # before the evening's change is over (a short night, a long transition:
+    # night at 22:00 with 10 hours of change, day at 06:00), the evening's
+    # change speeds up to finish as the morning's begins, so night light turns
+    # round there instead of jumping to full night and back.
+    return [replace(t, end=after.start) if after is not None and after.start < t.end else t
+            for t, after in zip(transitions, [*transitions[1:], None])]
 
 
 def _timed_schedule(morning: time, evening: time, duration: timedelta, days: list[date], tz: tzinfo) -> list[Transition]:

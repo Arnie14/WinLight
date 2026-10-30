@@ -174,6 +174,8 @@ class NightLightController(QObject):
             log.warning("Applying the gamma ramps again failed", exc_info=True)
 
     def set_config(self, config: NightLightConfig) -> None:
+        if config == self._config:
+            return  # Apply in Settings for another section: the ramps aren't written again
         self._config = config
         self.update()
 
@@ -182,6 +184,8 @@ class NightLightController(QObject):
         self.update()
 
     def clear_override(self) -> None:
+        if self._override is None:
+            return  # nothing to end: the ramps aren't written again
         self._override = None
         self.update()
 

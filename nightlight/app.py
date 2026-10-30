@@ -654,6 +654,7 @@ class NightLightApp:
         self.brightness_memory.shutdown()
         self.monitors.shutdown()
         self.shortcuts.stop()
+        self.updates.set_enabled(False)  # signing out: no check while the session ends
         self.system_events.close()
 
 

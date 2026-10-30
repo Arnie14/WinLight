@@ -122,32 +122,48 @@ class DisplayWatcher(QObject):
                 log.info("Input while the displays were reported off: they're on (Windows didn't say so)")
                 self._on_displays_on()
 
+    # Once stopped (quitting, or signing out, which keeps the event loop
+    # running a while), none of these say anything: the parts of the app they
+    # would wake have shut down.
+
     def _on_clock_changed(self) -> None:
+        if self._stopped:
+            return
         # The clock was changed (by hand, or synced): its jump isn't a wake.
         self._last_check = self._clock()
         self.clockChanged.emit()
 
     def _on_displays_off(self) -> None:
+        if self._stopped:
+            return
         self._displays_off = True
         self._displays_off_at = self._clock()
         self.displaysOff.emit()
 
     def _on_displays_on(self) -> None:
+        if self._stopped:
+            return
         self._displays_off = False
         self.displaysOn.emit()
 
     def _on_suspending(self) -> None:
+        if self._stopped:
+            return
         self._suspended = True
         self._suspended_at = self._clock()
         self._settle.stop()  # nothing to re-apply while asleep
         self.suspending.emit()
 
     def _on_native_resume(self) -> None:
+        if self._stopped:
+            return
         self._native_resume_at = self._clock()
         self._last_check = self._native_resume_at
         self._resume()
 
     def _resume(self) -> None:
+        if self._stopped:
+            return
         self._suspended = False
         self._displays_off = False  # waking turns them on
         self.resumed.emit()

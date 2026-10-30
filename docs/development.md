@@ -65,6 +65,8 @@ ruff check .
 - The suite runs the Windows backends against a fake of the Windows APIs, plus Windows-only tests of the real bindings: structure sizes, `QueryDisplayConfig`, EDID identity, gamma ramps, DDC/CI handles, power notifications in a real window, the named pipe's ownership check. On Windows, the only expected skip is the Linux-only KDE backend's import.
 - `tests/test_imports.py` parses every import of the app's own modules, so a moved module or renamed name fails at once.
 - `tests/test_docs.py` lints the Markdown documents: headings, links and anchors that resolve, tables with matching columns, and the project's writing rules.
+- `tests/test_architecture.py` checks the design's rules in the source (declared Windows call types, no signals under a lock, named daemon threads, no sleeping or nested event loops on the main thread, owned timers, atomic writes, and more); a justified exception goes in its list with the reason. `tests/test_design.py` and `tests/test_concurrency_and_soak.py` check the design's promises with random cases from fixed seeds, so a failure repeats exactly.
+- `tests/conftest.py` fails a test that raises inside a Qt slot, makes Qt print a warning, leaves a non-daemon thread running, or raises in a thread or a finalizer; a test running past 300 s ends the run with every thread's stack (`WINLIGHT_TEST_WATCHDOG_S` changes it). `tests/test_suite_guards.py` checks each guard. A new setting must be added to `EVERY_SETTING` in `tests/test_design.py`.
 - Ruff's rules are in `pyproject.toml` under `[tool.ruff.lint]`. CI runs both, and reports each run's test counts in its summary.
 
 ## Checks on real hardware
