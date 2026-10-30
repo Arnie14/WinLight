@@ -22,6 +22,9 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - The panel's **Activate** button drew its arrow over its text. It's a split button now, like Suspend: click it for night light until you turn it off, or use its arrow for a set time.
 - **Switches no longer keep a white ring after a click.** As in Windows 11, the ring shows only when the keyboard moves to them.
 - If reg.exe, run to unlock or lock Windows' color limit, didn't finish in time, Winlight said it had failed but left it running, so it could still change the setting afterwards. It is now ended.
+- A color profile whose calibration has an impossible gamma (infinite, or in the thousands) was read as a ramp black everywhere but at full white, and kept as the display's calibration: the screen went black under night light. Such a calibration is now refused as unreadable.
+- When Windows failed for a moment to describe the displays, an HDR display looked as if HDR had been turned off, and each display lost its identity until the next check. What was known about each display is now kept until Windows answers again.
+- At startup, Winlight checks each Windows structure it uses field by field, not only its size, and turns off only the feature concerned if one doesn't match.
 
 ## 0.7.0 Beta 1 (2026-10-30)
 

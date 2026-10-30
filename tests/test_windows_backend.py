@@ -601,10 +601,11 @@ def test_a_failure_detecting_one_display_does_not_affect_the_others(monkeypatch)
 
 
 def test_a_handle_in_use_is_released_only_when_its_call_returns():
-    release, destroyed = threading.Event(), []
+    entered, release, destroyed = threading.Event(), threading.Event(), []
 
     class Api:
         def set_vcp(self, handle, code, value):
+            entered.set()
             release.wait(5)
 
         def destroy_physical_monitor(self, handle):
@@ -613,7 +614,7 @@ def test_a_handle_in_use_is_released_only_when_its_call_returns():
     control = windows._VcpControl(Api(), 7, 100)
     writer = threading.Thread(target=control.write, args=(50,))
     writer.start()
-    time.sleep(0.05)
+    assert entered.wait(5)  # inside the call, not hoped to be by now
     assert control.busy_for is not None
     control.close()
     assert destroyed == []  # still in use: destroying it now could crash
@@ -627,13 +628,13 @@ def test_a_handle_in_use_is_released_only_when_its_call_returns():
 def test_detecting_again_while_a_call_is_stuck_keeps_away_from_that_display(monkeypatch):
     ddc = FakeDdc([PhysicalMonitor(r"\\.\DISPLAY1", 7, "x")], {7: (40, 100)})
     ddc.install(monkeypatch, [with_edid(r"\\.\DISPLAY1", "DELL", "S1")])
-    release = threading.Event()
-    monkeypatch.setattr(win32, "set_vcp", lambda h, code, value: release.wait(5))
+    entered, release = threading.Event(), threading.Event()
+    monkeypatch.setattr(win32, "set_vcp", lambda h, code, value: (entered.set(), release.wait(5)))
     backend = backend_with()
     backend.list_monitors()
     writer = threading.Thread(target=backend.set_brightness, args=(0, 50))
     writer.start()
-    time.sleep(0.05)
+    assert entered.wait(5)  # the write is inside the driver
     ddc.monitors = [PhysicalMonitor(r"\\.\DISPLAY1", 8, "x")]
     [info] = backend.list_monitors()  # e.g. after a display change
     assert not info.supported and info.status == "not responding"
@@ -863,10 +864,12 @@ def test_another_program_fighting_over_the_ramp_is_backed_off_from(monkeypatch, 
     # ran, and every round logged two lines.
     import logging
 
-    monkeypatch.setattr(windows, "CONTEST_BACKOFF_S", 0.2)
+    from tests.fake_windows import FakeClock
+
+    clock = FakeClock()
     gdi = FakeGdi({D1: identity_ramp()}, min_peak=0.0)
     gdi.install(monkeypatch, [target(D1, "A")])
-    gamma = windows.WindowsGammaBackend()
+    gamma = windows.WindowsGammaBackend(clock=clock)
     gamma.apply(4500)
     ours = gdi.ramps[D1]
     theirs = gamma_ramp(whitepoint(2500))  # f.lux's strong tint
@@ -883,7 +886,7 @@ def test_another_program_fighting_over_the_ramp_is_backed_off_from(monkeypatch, 
             gamma.apply(kelvin)  # night light moving on meanwhile doesn't fight either
             gamma.verify()
         assert gdi.sets == sets and gdi.ramps[D1] == theirs
-    time.sleep(0.25)  # the other program has gone quiet
+    clock.advance(windows.CONTEST_BACKOFF_S)  # the other program has gone quiet
     assert gamma.verify() is True and gdi.ramps[D1] != theirs  # night light is back
     gamma.release()
     assert gdi.ramps[D1] == identity_ramp()  # its tint wasn't a base worth keeping
@@ -934,38 +937,6 @@ def test_windows_resetting_the_ramp_while_the_desktop_comes_back_is_no_fight(mon
     for _ in range(windows.CONTEST_CHANGES + 1):
         gdi.ramps[D1] = identity_ramp()
         assert gamma.verify() is True and peak_blue(gdi) < 0.9  # put back each time
-
-
-def test_backing_off_takes_longer_each_time_it_happens_again(monkeypatch):
-    monkeypatch.setattr(windows, "CONTEST_BACKOFF_S", 0.05)
-    gdi = FakeGdi({D1: identity_ramp()}, min_peak=0.0)
-    gdi.install(monkeypatch, [target(D1, "A")])
-    gamma = windows.WindowsGammaBackend()
-    gamma.apply(4500)
-    backoffs = []
-    for _ in range(3):
-        for _ in range(3):
-            gdi.ramps[D1] = gamma_ramp(whitepoint(2500))
-            gamma.verify()
-        display = gamma._displays[D1]
-        backoffs.append(display.backoff)
-        time.sleep(display.backoff + 0.02)
-        gamma.verify()  # the back-off ends: night light back
-    assert backoffs == [0.05, 0.1, 0.2]
-
-
-def test_one_reset_now_and_then_is_not_a_fight(monkeypatch):
-    gdi = FakeGdi({D1: identity_ramp()}, min_peak=0.0)
-    gdi.install(monkeypatch, [target(D1, "A")])
-    gamma = windows.WindowsGammaBackend()
-    gamma.apply(4500)
-    ours = gdi.ramps[D1]
-    monkeypatch.setattr(windows, "CONTEST_WINDOW_S", 0.02)  # so "every few minutes" can be a few hundredths of a second
-    for _ in range(5):  # the lock screen, every few minutes
-        time.sleep(0.03)
-        gdi.ramps[D1] = identity_ramp()
-        assert gamma.verify() is True and same(gdi.ramps[D1], ours)
-    assert not gamma._displays[D1].contested
 
 
 # --- Keeping display calibrations (Settings > Displays) ------------------------

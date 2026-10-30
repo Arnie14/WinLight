@@ -43,6 +43,9 @@ nightlight = ["data/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
+markers = [
+    "concurrency: races staged one interleaving at a time, with gates and a fake clock (tests/fake_windows.py); never sleeps",
+]
 # An exception in a thread, or in a finalizer (__del__), fails the test that
 # caused it instead of being printed and forgotten.
 filterwarnings = [

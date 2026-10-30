@@ -1098,9 +1098,11 @@ class WindowsGammaBackend:
     # How long the display list and their HDR state are trusted.
     DISPLAYS_TTL = 10.0
 
-    def __init__(self, api: DisplayApi | None = None, journal: GammaJournal | None = None) -> None:
+    def __init__(self, api: DisplayApi | None = None, journal: GammaJournal | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self._api: DisplayApi = api or win32
         self._journal = journal or GammaJournal()
+        self._clock = clock  # monotonic seconds; tests step it (tests/fake_windows.py)
         self._displays: dict[str, _GammaDisplay] = {}
         self._listed_at: float | None = None
         self._reapplied = False  # set when refreshing the list put back a reset ramp
@@ -1170,7 +1172,7 @@ class WindowsGammaBackend:
         ramp it was last sent while the screen shows a reset one. Resets in
         the next SETTLING_S are Windows', not a contest. True if any was set."""
         with self._lock:
-            self._settling_until = time.monotonic() + SETTLING_S
+            self._settling_until = self._clock() + SETTLING_S
         return self.verify(force=True)
 
     @_skipped_while_stuck(False)
@@ -1184,7 +1186,7 @@ class WindowsGammaBackend:
             self._reapplied = False
             displays = self._current_displays()
             reapplied = self._reapplied  # found reset while the list was refreshed (and already re-applied)
-            now = time.monotonic()
+            now = self._clock()
             for display in displays:
                 if display.contested and now >= display.contested_until:
                     display.contested = False
@@ -1421,7 +1423,7 @@ class WindowsGammaBackend:
             log.exception("Changing the gamma ramp of %s failed", display.name)
 
     def _apply(self, display: _GammaDisplay) -> None:
-        if display.contested and time.monotonic() < display.contested_until:
+        if display.contested and self._clock() < display.contested_until:
             return  # another program keeps changing it; see _foreign_change
         if display.hdr:
             self._warn_once(
@@ -1492,7 +1494,7 @@ class WindowsGammaBackend:
         return True
 
     def _current_displays(self) -> list[_GammaDisplay]:
-        now = time.monotonic()
+        now = self._clock()
         if self._listed_at is not None and now - self._listed_at < self.DISPLAYS_TTL:
             return list(self._displays.values())
         self._listed_at = now
@@ -1502,7 +1504,11 @@ class WindowsGammaBackend:
                 hdr, key = sources.get(target.gdi_name, (False, ""))
                 sources[target.gdi_name] = (hdr or target.hdr, key or target.key)
         else:
-            sources = dict.fromkeys(self._api.attached_display_names(), (False, ""))
+            # The detailed query failed (win32.display_targets): names only. A
+            # display seen before keeps its HDR state and identity, rather than
+            # look like HDR was turned off and lose its journal entry.
+            sources = {name: (self._displays[name].hdr, self._displays[name].key) if name in self._displays else (False, "")
+                       for name in self._api.attached_display_names()}
         displays = {}
         for name, (hdr, key) in sources.items():
             new = name not in self._displays
@@ -1613,7 +1619,7 @@ class WindowsGammaBackend:
     def _foreign_change(self, display: _GammaDisplay) -> None:
         """Our ramp was replaced: once is Windows (a reset) or a tool starting;
         again and again is another program fighting over it (see CONTEST_CHANGES)."""
-        now = time.monotonic()
+        now = self._clock()
         if now < self._settling_until:
             log.debug("The gamma ramp of %s was reset again while the desktop came back", display.name)
             return

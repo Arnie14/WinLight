@@ -9,6 +9,8 @@ import sys
 import time
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from nightlight.hardware import win32
 
@@ -365,3 +367,130 @@ def test_a_program_that_doesnt_finish_in_time_is_ended_not_left_running():
     with pytest.raises(OSError, match="didn't finish"):
         win32.run_elevated(ping, "-n 30 127.0.0.1", verb="open", timeout_s=0.5)
     assert _pings() - before == set()
+
+
+# --- DDC/CI retries (Monitorian and Twinkle Tray retry the transient errors) -----------------------
+
+ERROR_CODES = sorted(win32._TRANSIENT_ERRORS | win32._GONE_ERRORS | {win32.ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED, 0, 5})
+
+
+def driver(monkeypatch, answers):
+    """A DDC/CI call answering in turn: True (worked) or an error code; and
+    the pauses taken between attempts."""
+    import types
+
+    answers, pauses, last_error = list(answers), [], [0]
+
+    def call():
+        answer = answers.pop(0)
+        if answer is True:
+            return True
+        last_error[0] = answer
+        return False
+
+    monkeypatch.setattr(win32.ctypes, "get_last_error", lambda: last_error[0])
+    monkeypatch.setattr(win32, "time", types.SimpleNamespace(sleep=pauses.append, monotonic=time.monotonic))
+    return call, answers, pauses
+
+
+@given(st.lists(st.sampled_from([True, *ERROR_CODES]), min_size=win32._DDC_ATTEMPTS, max_size=win32._DDC_ATTEMPTS))
+def test_ddc_calls_retry_transient_errors_only_and_at_most_three_times(answers):
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        call, left, pauses = driver(monkeypatch, answers)
+        made = 0
+        for made, answer in enumerate(answers, start=1):  # what should happen
+            if answer is True or answer not in win32._TRANSIENT_ERRORS or made == win32._DDC_ATTEMPTS:
+                break
+        if answers[made - 1] is True:
+            win32._ddc_call("Reading VCP 0x10", call)
+        else:
+            with pytest.raises(win32.DdcError) as raised:
+                win32._ddc_call("Reading VCP 0x10", call)
+            assert raised.value.code == answers[made - 1]
+        assert len(answers) - len(left) == made  # no attempt more or fewer
+        assert pauses == [win32._DDC_RETRY_DELAY] * (made - 1)  # a pause before each retry, none after the last
+
+
+@pytest.mark.parametrize("code", sorted(win32._TRANSIENT_ERRORS))
+def test_each_transient_error_is_retried_and_then_works(monkeypatch, code):
+    call, left, pauses = driver(monkeypatch, [code, True])
+    win32._ddc_call("Writing VCP 0x10", call)
+    assert left == [] and len(pauses) == 1
+
+
+@pytest.mark.parametrize("code", sorted(win32._GONE_ERRORS | {win32.ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED}))
+def test_a_monitor_gone_or_without_the_feature_is_not_asked_again(monkeypatch, code):
+    call, left, pauses = driver(monkeypatch, [code, True])
+    with pytest.raises(win32.DdcError) as raised:
+        win32._ddc_call("Reading VCP 0x10", call)
+    assert raised.value.code == code and left == [True] and pauses == []
+
+
+def test_retries_fit_well_within_the_time_limit_of_a_call():
+    """Three attempts, spaced as DDC/CI asks, with a pause between: far
+    inside the limit after which a call is given up as hung, so a monitor
+    that needs every retry isn't mistaken for a hung one."""
+    from nightlight.brightness import monitors
+
+    worst_case_waits = win32._DDC_ATTEMPTS * win32.DDC_MIN_INTERVAL + (win32._DDC_ATTEMPTS - 1) * win32._DDC_RETRY_DELAY
+    assert worst_case_waits < min(monitors.READ_TIMEOUT_S, monitors.WRITE_TIMEOUT_S) / 10
+
+
+# --- SDR content brightness: the one write to an undocumented Windows call ------------------------
+
+
+class FakeDisplayConfig:
+    """user32's DisplayConfig calls, keeping the packets they were given."""
+
+    def __init__(self, white_level=0):
+        self.sent = []
+        self.white_level = white_level
+
+    def DisplayConfigSetDeviceInfo(self, pointer):
+        header = ctypes.cast(pointer, ctypes.POINTER(win32.DISPLAYCONFIG_DEVICE_INFO_HEADER)).contents
+        self.sent.append(win32.DISPLAYCONFIG_SET_SDR_WHITE_LEVEL.from_buffer_copy(
+            ctypes.string_at(ctypes.addressof(header), ctypes.sizeof(win32.DISPLAYCONFIG_SET_SDR_WHITE_LEVEL))))
+        return win32.ERROR_SUCCESS
+
+    def DisplayConfigGetDeviceInfo(self, pointer):
+        level = ctypes.cast(pointer, ctypes.POINTER(win32.DISPLAYCONFIG_SDR_WHITE_LEVEL)).contents
+        level.SDRWhiteLevel = self.white_level
+        return win32.ERROR_SUCCESS
+
+
+SDR_TARGET = win32.DisplayTarget(r"\.\DISPLAY1", "HDR monitor", "", 5, True, adapter=(0x1234, 1), target_id=4352)
+
+
+@given(st.floats(min_value=-1e6, max_value=1e6, allow_nan=False))
+def test_any_sdr_brightness_asked_for_is_sent_inside_windows_own_range(nits):
+    """Monitorian sends any value it's given; Winlight keeps to the ends of
+    Windows' own slider (80-480 nits) in its 4-nit steps, and fills the
+    packet exactly as Monitorian and Twinkle Tray do (flag 1)."""
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        fake = FakeDisplayConfig()
+        monkeypatch.setattr(win32, "_user32", fake, raising=False)
+        assert win32.set_sdr_white_level(SDR_TARGET, nits) is True
+    [packet] = fake.sent
+    assert packet.header.type == win32.DISPLAYCONFIG_DEVICE_INFO_SET_SDR_WHITE_LEVEL == 0xFFFFFFEE
+    assert packet.header.size == 28 and packet.finalValue == 1
+    assert (packet.header.adapterId.LowPart, packet.header.adapterId.HighPart, packet.header.id) == (0x1234, 1, 4352)
+    sent_nits = packet.SDRWhiteLevel * 80 / 1000
+    assert win32.SDR_MIN_NITS <= sent_nits <= win32.SDR_MAX_NITS and sent_nits % 4 == 0
+    if win32.SDR_MIN_NITS + 2 <= nits <= win32.SDR_MAX_NITS - 2:
+        assert abs(sent_nits - nits) <= 2  # the nearest step
+
+
+@pytest.mark.parametrize("percent", range(101))
+def test_an_sdr_brightness_set_reads_back_as_the_same_percent(monkeypatch, percent):
+    from nightlight.hardware import windows
+
+    fake = FakeDisplayConfig()
+    monkeypatch.setattr(win32, "_user32", fake, raising=False)
+    windows._SdrControl(win32, SDR_TARGET)._write(percent)
+    fake.white_level = fake.sent[-1].SDRWhiteLevel
+    assert abs(windows._SdrControl(win32, SDR_TARGET)._read() - percent) <= 1  # 4-nit steps: within a percent
+
+
+def test_no_sdr_brightness_reported_is_none_not_zero(monkeypatch):
+    monkeypatch.setattr(win32, "_user32", FakeDisplayConfig(white_level=0), raising=False)
+    assert win32.get_sdr_white_level(SDR_TARGET) is None

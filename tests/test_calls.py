@@ -27,20 +27,17 @@ def test_calls_run_one_at_a_time_on_one_thread():
 
 def test_a_stuck_call_is_given_up_on_and_the_next_one_still_runs():
     runner = CallRunner("test")
-    release = threading.Event()
+    release, returned = threading.Event(), threading.Event()
     started = time.monotonic()
     with pytest.raises(CallTimeout) as raised:
-        runner.call(lambda: release.wait(5), 0.1, "reading a monitor")
+        runner.call(lambda: release.wait(5), 0.1, "reading a monitor", on_late=returned.set)
     assert time.monotonic() - started < 0.5
     assert raised.value.what == "reading a monitor"
     assert runner.call(lambda: "next", 1) == "next"  # on a fresh thread
     assert runner.threads_started == 2
     assert runner.stuck and "reading a monitor" in runner.stuck[0]
     release.set()
-    for _ in range(100):
-        if not runner.stuck:
-            break
-        time.sleep(0.01)
+    assert returned.wait(5)  # taken off the stuck list before its clean-up runs
     assert runner.stuck == []
     runner.close()
 
@@ -89,26 +86,33 @@ def test_a_call_returning_while_it_is_being_given_up_on_is_not_left_stuck(monkey
     # The race: the caller marks the call abandoned, and before it has listed
     # it as stuck, the call returns and takes itself off the (still empty)
     # list. Listing it afterwards left it "stuck" forever: the service then
-    # never detected displays again, and quitting treated it as hung. The
-    # listing is slowed down here so the call returns inside that gap.
+    # never detected displays again, and quitting treated it as hung. Staged
+    # exactly: the listing waits until the call has returned.
     from nightlight.hardware import calls
 
     original_add = calls._StuckRegistry.add
+    release, call_returning = threading.Event(), threading.Event()
 
-    def slow_add(self, job):
-        time.sleep(0.2)
+    def add_once_returned(self, job):
+        release.set()  # the call returns now, while it is being listed
+        assert call_returning.wait(5)
         original_add(self, job)
 
-    monkeypatch.setattr(calls._StuckRegistry, "add", slow_add)
-    returned = threading.Event()
+    def returns_too_late():
+        release.wait(5)
+        call_returning.set()
+
+    monkeypatch.setattr(calls._StuckRegistry, "add", add_once_returned)
     runner = CallRunner("race")
+    returned = threading.Event()
     with pytest.raises(CallTimeout):
-        runner.call(lambda: time.sleep(0.1), 0.02, "a call that returns just too late", on_late=returned.set)
-    assert returned.wait(2)
-    time.sleep(0.1)
-    assert runner.stuck == []
+        runner.call(returns_too_late, 0.02, "a call that returns just too late", on_late=returned.set)
+    assert returned.wait(5) and runner.stuck == []
+    release.clear()
+    call_returning.clear()
+    returned.clear()
     with pytest.raises(CallTimeout):
-        run_with_timeout(lambda: time.sleep(0.1), 0.02, "a side call that returns just too late")
-    time.sleep(0.3)
+        run_with_timeout(returns_too_late, 0.02, "a side call that returns just too late", on_late=returned.set)
+    assert returned.wait(5)
     assert not [c for c in calls.stuck_side_calls() if c.startswith("a side call that returns just too late")]  # others' may linger
     runner.close()

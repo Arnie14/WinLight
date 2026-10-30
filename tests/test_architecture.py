@@ -409,6 +409,45 @@ def test_every_source_file_says_its_license(path):
     assert text.startswith("# SPDX-License-Identifier: GPL-3.0-only"), rel(path)
 
 
+# --- The concurrency test category -------------------------------------------------------------
+
+
+def concurrency_tests(trees) -> dict[Path, list[ast.AST]]:
+    """Test modules marked concurrency as a whole (pytestmark), the test
+    functions marked one by one, and the fakes they rely on."""
+    found: dict[Path, list[ast.AST]] = {}
+    for path, tree in trees.items():
+        whole = path.name == "fake_windows.py" or any(
+            isinstance(node, ast.Assign) and any(ast.unparse(t) == "pytestmark" for t in node.targets)
+            and "concurrency" in ast.unparse(node.value) for node in tree.body)
+        if whole:
+            found[path] = [tree]
+        elif marked := [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and any("mark.concurrency" in ast.unparse(d) for d in node.decorator_list)]:
+            found[path] = marked
+    return found
+
+
+def rule_concurrency_never_sleeps(trees) -> list[str]:
+    found = []
+    for path, nodes in concurrency_tests(trees).items():
+        for node in (n for top in nodes for n in ast.walk(top)):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) in ("time.sleep", "sleep", "QTest.qWait", "qWait", "QThread.msleep"):
+                found.append(f"{where(path, node)} {ast.unparse(node.func)}()")
+    return found
+
+
+TEST_TREES = {path: with_parents(ast.parse(path.read_text(encoding="utf-8"))) for path in (ROOT / "tests").glob("*.py")}
+
+
+def test_concurrency_tests_never_sleep():
+    """A race test that sleeps to let the other thread "get there" passes on
+    a fast machine and fails on a busy one. These wait for gates and events
+    instead, and move a fake clock (tests/fake_windows.py)."""
+    assert len(concurrency_tests(TEST_TREES)) >= 2, "no concurrency tests found: the marker's spelling changed?"
+    assert not rule_concurrency_never_sleeps(TEST_TREES)
+
+
 # --- The rules catch what they should ----------------------------------------------------------
 
 BAD = {
@@ -427,6 +466,7 @@ BAD = {
     rule_print: "print('hello')\n",
     rule_swallowed: "try:\n    pass\nexcept Exception:\n    pass\n",
     rule_frozen: "from dataclasses import dataclass\n@dataclass\nclass Settings:\n    x: int = 1\n",
+    rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
 }
 
 
