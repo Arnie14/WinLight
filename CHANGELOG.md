@@ -2,7 +2,28 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
-## 0.7.0 Beta 1 (unreleased)
+## 0.7.5 Beta 1 (unreleased)
+
+### Added
+
+- **Pick apps by name.** Adding an app to "Pause for these apps" or "Never dim while these apps are in front" now offers your installed apps, from the Start menu, with a search box; apps running now are listed too. Browsing for a program file is still there, and starts in Program Files.
+- **Brightness has a day of its own** on the Brightness page, as night light has: a strip from midnight to midnight, darker where the schedule dims, with a line at now. It follows the schedule as you edit it, before you apply it.
+- **Settings > Displays says when a display is dimmed in software**: the picture is darkened, not the backlight, so it saves no power and blacks turn grey. Displays showing the same picture (clone mode) say they share one night light and one software dimming.
+
+### Changed
+
+- **Closing Settings with unsaved changes asks** whether to apply them or discard them. Before, they stayed in the window, unapplied, and were still there when you opened it again. Quitting Winlight or signing out never waits for an answer: unsaved changes are dropped.
+- The **Pause night light** options say more plainly what each one does, and that each works on its own. "Video, calls and color apps" is now "Video, calls and color work".
+- **Warmer night light** is listed among Winlight's features: it shows Windows' limit on how warm apps can make the screen, unlocks it, and locks it again.
+- **Screen readers name every control.** Settings controls are named after their row ("Schedule", "Night"), each display's brightness slider after its display ("DELL brightness"), and the panel's icon buttons after what they do. Before, Narrator read many of them as just "combo box" or "slider".
+
+### Fixed
+
+- The panel's **Activate** button drew its arrow over its text. It's a split button now, like Suspend: click it for night light until you turn it off, or use its arrow for a set time.
+- **Switches no longer keep a white ring after a click.** As in Windows 11, the ring shows only when the keyboard moves to them.
+- If reg.exe, run to unlock or lock Windows' color limit, didn't finish in time, Winlight said it had failed but left it running, so it could still change the setting afterwards. It is now ended.
+
+## 0.7.0 Beta 1 (2026-10-30)
 
 ### Added
 

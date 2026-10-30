@@ -22,7 +22,7 @@ from nightlight import APP_NAME
 from nightlight.brightness.monitors import MonitorManager
 from nightlight.color.controller import NightLightController
 from nightlight.config import DisplayPrefs
-from nightlight.core.schedule import compute_state
+from nightlight.core.schedule import OverrideKind, compute_state
 from nightlight.hardware.brightness import MonitorInfo
 from nightlight.ui import icons
 from nightlight.ui.day_ribbon import DayRibbon
@@ -290,11 +290,12 @@ class Flyout(QFrame):
             self._toggle.setToolTip("Night light stays off until you resume it. The arrow has timed choices")
             self._toggle.setMenu(self._override_menu)
             self._toggle.setPopupMode(Mode.MenuButtonPopup)
-        else:  # night light is off: only "Activate ▸"
+        else:  # night light is off: "Activate", a split button like Suspend (an instant
+            # popup drew its arrow over the text)
             self._toggle.setText(label)
-            self._toggle.setToolTip("")
+            self._toggle.setToolTip("Night light stays on until you turn it off. The arrow has timed choices")
             self._toggle.setMenu(self._override_menu)
-            self._toggle.setPopupMode(Mode.InstantPopup)
+            self._toggle.setPopupMode(Mode.MenuButtonPopup)
 
     def set_scheduler(self, scheduler) -> None:
         self._scheduler = scheduler
@@ -319,3 +320,5 @@ class Flyout(QFrame):
             controller.clear_override()  # "Resume" or "Turn Off"
         elif can_suspend(controller):
             toggle_suspended(controller)  # "Suspend": until resumed
+        else:
+            controller.set_override(OverrideKind.ACTIVATE, None)  # "Activate": until turned off

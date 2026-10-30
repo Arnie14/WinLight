@@ -977,7 +977,8 @@ def _change_gamma_range(expand: bool, parent_window: int) -> str:
     return "done"
 
 
-def run_elevated(path: str, arguments: str, parent_window: int = 0, verb: str = "runas") -> int | None:
+def run_elevated(path: str, arguments: str, parent_window: int = 0, verb: str = "runas",
+                 timeout_s: float = EXPAND_TIMEOUT_S) -> int | None:
     """Run a program through the administrator prompt and wait for it: its
     exit code, or None if the prompt was declined. Raises OSError otherwise.
     `verb` "open" runs it without the prompt (tests)."""
@@ -990,6 +991,8 @@ def run_elevated(path: str, arguments: str, parent_window: int = 0, verb: str = 
     _kernel32.GetExitCodeProcess.restype = wintypes.BOOL
     _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     _kernel32.CloseHandle.restype = wintypes.BOOL
+    _kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _kernel32.TerminateProcess.restype = wintypes.BOOL
     info = SHELLEXECUTEINFOW(cbSize=ctypes.sizeof(SHELLEXECUTEINFOW), fMask=0x40 | 0x100,  # SEE_MASK_NOCLOSEPROCESS | NOASYNC
                              hwnd=parent_window or None, lpVerb=verb, lpFile=path, lpParameters=arguments, nShow=0)  # SW_HIDE
     if not shell32.ShellExecuteExW(ctypes.byref(info)):
@@ -1000,8 +1003,11 @@ def run_elevated(path: str, arguments: str, parent_window: int = 0, verb: str = 
     if not info.hProcess:
         raise OSError("no process handle")
     try:
-        if _kernel32.WaitForSingleObject(info.hProcess, EXPAND_TIMEOUT_S * 1000) != 0:  # WAIT_OBJECT_0
-            raise OSError(f"{Path(path).name} didn't finish within {EXPAND_TIMEOUT_S} s")
+        if _kernel32.WaitForSingleObject(info.hProcess, round(timeout_s * 1000)) != 0:  # WAIT_OBJECT_0
+            # Ended, not just let go: it mustn't change anything after we've said it failed.
+            if not _kernel32.TerminateProcess(info.hProcess, 1) or _kernel32.WaitForSingleObject(info.hProcess, 5000) != 0:
+                log.warning("%s didn't finish and couldn't be ended (error %d)", Path(path).name, ctypes.get_last_error())
+            raise OSError(f"{Path(path).name} didn't finish within {timeout_s:g} s")
         code = wintypes.DWORD()
         if not _kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code)):
             raise ctypes.WinError(ctypes.get_last_error())

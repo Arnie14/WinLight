@@ -37,7 +37,7 @@ In the panel, click ⚙ (Settings):
 - [ ] Under **Sleep**, set a bedtime and wake-up time and click **Use sleep schedule**: the schedule changes to custom times starting 3 hours before bedtime, with a 60-minute transition and 2700 K. Click **Reset** to undo it, then **Use warmth only**: only the night temperature changes.
 - [ ] Settings → Night Light → under **Pause night light**, turn on **Fullscreen apps**, Apply. Play a video fullscreen or start a game: that display fades to normal colors, the others stay warm. Leave fullscreen: it fades back.
 - [ ] Turn that off, turn on **Selected apps**, add an app (e.g. your photo editor), Apply, and switch to it: the same happens while it's in front, fullscreen or not; other fullscreen apps keep night light.
-- [ ] Turn that off, turn on **Video, calls, games and color work**, Apply. Play a video in a window (not fullscreen), join a video call, or open Photoshop or Lightroom: the display in front fades to normal colors, and back when the video stops or you switch away. Note anything it misses.
+- [ ] Turn that off, turn on **Video, calls and color work**, Apply. Play a video in a window (not fullscreen), join a video call, or open Photoshop or Lightroom: the display in front fades to normal colors, and back when the video stops or you switch away. Note anything it misses.
 - [ ] With a game or video fullscreen, start Winlight again from the Start menu: nothing pops up over it, and the game keeps focus.
 - [ ] Switch back to your usual schedule (custom times or sunset/sunrise).
 

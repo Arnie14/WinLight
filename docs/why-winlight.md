@@ -48,6 +48,7 @@ These tools pioneered much of what night light means on a PC. f.lux in particula
 What Winlight adds:
 
 - **Hardware brightness alongside color**, for every display (DDC/CI, WMI or SDR brightness, not only dimming the picture), each with its own schedule, so evenings can get dimmer as well as warmer.
+- **Warmer than Windows allows by default:** Windows stops apps short of the warmest colors on many PCs. Winlight shows that limit and unlocks it in one click, as separate unlock tools and f.lux do, and can lock it again; there's no need for another tool or a registry edit.
 - **Pausing per display:** a game or photo editor gets true colors on its own display while your other displays stay warm.
 - **An automatic mode:** night light pauses for video playback, calls and exclusive-fullscreen games as Windows reports them, and for well-known photo, video and design apps, without a list to maintain.
 - **A sleep schedule** from your bedtime and wake-up time, based on what sleep research recommends.

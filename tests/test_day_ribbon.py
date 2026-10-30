@@ -62,3 +62,15 @@ def test_the_temperature_slider_track_shows_the_temperatures_it_sets():
     middle = slider.height() // 2
     cool, warm = image.pixelColor(30, middle), image.pixelColor(200, middle)
     assert cool.blue() > 200 and warm.blue() < 140 and warm.red() > 200  # neutral on the left, amber towards the right
+
+
+def test_a_brightness_day_is_painted_darker_where_the_level_is_lower():
+    from nightlight.ui.day_ribbon import brightness_color
+
+    ribbon = DayRibbon(lambda moment: 40 if moment.hour >= 20 or moment.hour < 7 else 100, lambda: NOON,
+                       color_of=brightness_color, fallback=100, name="Brightness today")
+    image = render(ribbon)
+    at = lambda hour: image.pixelColor(round(480 * hour / 24), 8)  # noqa: E731
+    assert at(2).lightness() < at(10).lightness() - 60  # 40% at night, 100% by day
+    assert ribbon.accessibleName() == "Brightness today" and ribbon.toolTip().startswith("Brightness today")
+    assert brightness_color(0).lightness() < brightness_color(50).lightness() < brightness_color(100).lightness()

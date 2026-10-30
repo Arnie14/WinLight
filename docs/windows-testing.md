@@ -65,6 +65,7 @@ The log is also written to `%LOCALAPPDATA%\WinLight\Logs\WinLight.log`; its path
 - [ ] Left-click: the panel opens just above the taskbar, its right edge in line with the icon (or in the corner by the clock), about 12 px from it.
 - [ ] Click the icon again: the panel closes and doesn't reopen. Click on the desktop or another window: it closes. Press Esc: it closes.
 - [ ] Right-click: Suspend or Activate, Settings…, Report a Problem… and Quit.
+- [ ] With night light off, the panel's **Activate** button shows its text and its arrow apart: clicking it turns night light on until you turn it off; its arrow offers set times.
 - [ ] Settings, from the tray menu and from the panel's ⚙, in dark mode: no white flash. Maximize the window, then restore it: it returns to its smaller size, inside the screen.
 - [ ] Set the taskbar to auto-hide: the panel still opens next to it.
 - [ ] Restart Explorer (Task Manager > Windows Explorer > Restart): the tray icon comes back.
@@ -147,8 +148,8 @@ Sleep recommendation (Settings > Night Light > Sleep):
 Pausing (Settings > Night Light > Pause night light):
 
 - [ ] **Fullscreen apps**: a fullscreen video (browser F11 or a player) and a game, borderless and exclusive, each fade their display to normal colors within about half a second; the other displays stay warm. Leaving fullscreen fades it back. Note any game that isn't detected.
-- [ ] **Selected apps**: add an app from "Add an app" (running apps) and from "Browse for an app…": switching to it pauses its display, fullscreen or not; switching away, minimizing or closing it resumes.
-- [ ] **Video, calls, games and color work**: a video playing in a window, a video call, an exclusive-fullscreen game, and Photoshop or Lightroom each pause the display in front. Note anything it misses or pauses wrongly.
+- [ ] **Selected apps**: add an app three ways from "Add an app": "Choose from installed apps…" (search for one, such as VLC), a running app, and "Browse for a program file…". Switching to it pauses its display, fullscreen or not; switching away, minimizing or closing it resumes.
+- [ ] **Video, calls and color work**: a video playing in a window, a video call, an exclusive-fullscreen game, and Photoshop or Lightroom each pause the display in front. Note anything it misses or pauses wrongly.
 - [ ] The panel and the tray tooltip say "Paused on <display> for …" meanwhile.
 
 Dimming when idle (Settings > Brightness > When I'm away, e.g. 1 minute to 20%):
@@ -164,6 +165,7 @@ Dimming when idle (Settings > Brightness > When I'm away, e.g. 1 minute to 20%):
 Settings > Brightness > **Change brightness by time of day**:
 
 - [ ] Each preset fills in its times and transition; editing one switches the preset to Custom. The line under the schedule shows the current level and the next change.
+- [ ] The strip above the schedule is darker where the schedule dims, with a line at now; editing a level or time changes it at once. Turning the schedule off hides it.
 - [ ] A point a couple of minutes ahead: every display changes then (the log says "Brightness schedule: N% …"), gradually over the transition.
 - [ ] Move a slider after a point: your level stays until the next point, also across sleep and restarting Winlight.
 - [ ] Sleep through a point or two: only the latest applies, once.
@@ -190,6 +192,10 @@ Settings > Brightness > **Change brightness by time of day**:
 - [ ] Light and dark mode, and each **Theme** and **Accent color** choice: all text readable, the Apply button's text readable on every accent, nothing cut off, the wide fields ending on one vertical line.
 - [ ] Two monitors with different scaling (100% and 150%): the panel opens at the right place and size on the one with the taskbar.
 - [ ] Switching Schedule between Always off, Always on, Sunset to sunrise and Custom times shows and hides rows without gaps; a page scrolls only when it is taller than the window. Tab reaches every control.
+- [ ] Change something in Settings and close the window with its ✕: it asks to apply or discard. Cancel keeps the window open; Discard and reopening shows the setting as it was. With changes still unsaved, quit Winlight from the tray: it quits without asking.
+- [ ] Click a switch: no white ring stays round it. Press Tab to reach one: the ring shows.
+- [ ] Narrator (Ctrl+Win+Enter): Tab through Settings and the panel: every control is read with a name ("Schedule, combo box", "DELL brightness, slider"), none as just "button" or "slider".
+- [ ] Settings > Displays: a display dimmed in software says its backlight isn't dimmed; in clone mode (Win+P > Duplicate), each display says it shares night light with the other.
 - [ ] Settings > Displays: rename a display: the panel, `--list` and the diagnostics use the new name; clearing it brings back its own. Hide a display: it's gone from the panel and "Change all displays together", and the schedule, idle dimming and restores leave it alone.
 - [ ] The [command line](command-line.md): `--list`, `--list --json`, `--get --display 1`, `--set 40`, `--set +10 --display 2`, `--set 50 --display <part of a name>`, `--set +10 --panel`, `--night-light on|off|toggle|auto|status`, `--refresh`, `--diagnostics`. Errors say why and exit with 1 (`--display 9`, `--set bright`); with Winlight not running it exits with 2.
 - [ ] Settings > **Shortcuts**: add one, click its field and press Ctrl+Alt+Up; set it to "Brighter by" 10, Apply: it says "Works", and pressing it raises every display by 10%, with a note at the bottom of the screen. Holding it keeps stepping. Add one with keys another app uses (Ctrl+Alt+Del can't be recorded; try one your other tools register): it says "Windows or another app has these keys"; quit that app and within 30 seconds it says "Works". A shortcut for one display changes only that display. Over a game in exclusive fullscreen, pressing a shortcut still works, but no note appears and the game keeps focus.

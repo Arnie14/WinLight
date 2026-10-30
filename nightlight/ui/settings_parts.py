@@ -68,6 +68,21 @@ class ToggleSwitch(QAbstractButton):
         if accessible_name:
             self.setAccessibleName(accessible_name)
         self.toggled.connect(self.update)
+        # The focus ring shows for keyboard focus only, as in Windows 11: a click
+        # gives focus too, and left a ring round the switch it changed.
+        self._keyboard_focus = False
+
+    def shows_focus_ring(self) -> bool:
+        return self.hasFocus() and self._keyboard_focus
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.FocusIn:
+            self._keyboard_focus = event.reason() in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason,
+                                                      Qt.FocusReason.ShortcutFocusReason)
+        elif event.type() == QEvent.Type.KeyPress:
+            self._keyboard_focus = True  # used from the keyboard after a click: show where focus is
+            self.update()
+        return super().event(event)
 
     def sizeHint(self) -> QSize:
         text = max(self.fontMetrics().horizontalAdvance(t) for t in ("On", "Off"))
@@ -110,7 +125,7 @@ class ToggleSwitch(QAbstractButton):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(knob_color)
         painter.drawEllipse(center, knob_r, knob_r)
-        if self.hasFocus():
+        if self.shows_focus_ring():
             pen = QPen(text_color, 1.4)
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -218,6 +233,12 @@ class SettingRow(QWidget):
         line.addLayout(text, 1)
         if control is not None:
             line.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
+            # What a screen reader says for it: the row's title, unless it has a name of its own.
+            target = control.focusProxy() or control
+            if not target.accessibleName():
+                target.setAccessibleName(title)
+            if description and not target.accessibleDescription():
+                target.setAccessibleDescription(description)
         outer.addLayout(line)
         if below is not None:
             outer.addWidget(below)

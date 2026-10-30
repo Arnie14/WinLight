@@ -6,15 +6,19 @@ schedule_editor.py.)"""
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QStandardPaths, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMenu,
     QPushButton,
     QVBoxLayout,
@@ -23,18 +27,71 @@ from PySide6.QtWidgets import (
 
 from nightlight.config import AppConfig, DisplayPrefs
 from nightlight.hardware.brightness import MonitorInfo
+from nightlight.system.apps import InstalledApp, installed_apps
 from nightlight.ui.widgets import SecondaryLabel
+
+
+class AppPicker(QDialog):
+    """Installed apps by name, with a search box: picking one adds its
+    program, so nobody has to hunt for an .exe file. Window-modal and opened
+    (not exec()'d): no nested event loop."""
+
+    def __init__(self, apps: list[InstalledApp], parent: QWidget, title: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.resize(420, 480)
+        self.search = QLineEdit(placeholderText="Search apps")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._filter)
+        self.list = QListWidget()
+        self.list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        for app in apps:
+            item = QListWidgetItem(app.name)
+            item.setData(Qt.ItemDataRole.UserRole, app.exe)
+            item.setToolTip(app.exe)
+            self.list.addItem(item)
+        self.list.itemDoubleClicked.connect(self.accept)
+        hint = SecondaryLabel("From the Start menu. An app that isn't listed can be picked while it runs, or by its "
+                              "program file (Browse).", scale=0.9)
+        hint.setWordWrap(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        self.add_button = buttons.addButton("Add", QDialogButtonBox.ButtonRole.AcceptRole)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.search)
+        layout.addWidget(self.list, 1)
+        layout.addWidget(hint)
+        layout.addWidget(buttons)
+        if not apps:
+            self.list.addItem(QListWidgetItem("No apps found in the Start menu"))
+            self.list.setEnabled(False)
+
+    def _filter(self, text: str) -> None:
+        words = text.casefold().split()
+        for row in range(self.list.count()):
+            item = self.list.item(row)
+            haystack = f"{item.text()} {item.data(Qt.ItemDataRole.UserRole) or ''}".casefold()
+            item.setHidden(not all(word in haystack for word in words))
+
+    def chosen(self) -> list[str]:
+        return [item.data(Qt.ItemDataRole.UserRole) for item in self.list.selectedItems() if item.data(Qt.ItemDataRole.UserRole)]
 
 
 class AppList(QWidget):
     """Apps chosen by executable name (to pause night light for, or never to
-    dim for idle while in front)."""
+    dim for idle while in front): from the apps running now, the Start menu's
+    apps by name, or, as a last resort, a program file."""
 
     changed = Signal()
 
-    def __init__(self, running_apps: Callable[[], list[str]], browse_title: str = "Pause night light for this app") -> None:
+    def __init__(self, running_apps: Callable[[], list[str]], browse_title: str = "Pause night light for this app",
+                 installed: Callable[[], list[InstalledApp]] = installed_apps) -> None:
         super().__init__()
         self._running_apps = running_apps
+        self._installed = installed
+        self._picker: AppPicker | None = None
         self._browse_title = browse_title
         self.list = QListWidget()
         self.list.setFixedHeight(96)
@@ -73,15 +130,37 @@ class AppList(QWidget):
 
     def _fill_menu(self) -> None:
         self._menu.clear()
+        self._menu.addAction("Choose from installed apps…", self._choose_installed)
         running = [app for app in self._running_apps() if app not in self.apps()]
-        for app in running:
-            self._menu.addAction(app, lambda app=app: self.add(app))
         if running:
-            self._menu.addSeparator()
-        self._menu.addAction("Browse for an app…", self._browse)
+            self._menu.addSection("Running now")
+            for app in running:
+                self._menu.addAction(app, lambda app=app: self.add(app))
+        self._menu.addSeparator()
+        self._menu.addAction("Browse for a program file…", self._browse)
+
+    def _choose_installed(self) -> None:
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        try:
+            apps = [app for app in self._installed() if app.exe not in self.apps()]
+        finally:
+            self.unsetCursor()
+        self._picker = AppPicker(apps, self.window(), self._browse_title)
+        self._picker.accepted.connect(self._add_chosen)
+        self._picker.open()
+        self._picker.search.setFocus()
+
+    def _add_chosen(self) -> None:
+        if self._picker is not None:
+            for exe in self._picker.chosen():
+                self.add(exe)
+            self._picker.deleteLater()
+            self._picker = None
 
     def _browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, self._browse_title, "", "Programs (*.exe)")
+        start = QStandardPaths.standardLocations(QStandardPaths.StandardLocation.ApplicationsLocation)
+        folder = "C:/Program Files" if Path("C:/Program Files").is_dir() else (start[0] if start else "")
+        path, _ = QFileDialog.getOpenFileName(self, self._browse_title, folder, "Programs (*.exe)")
         if path:
             self.add(path.replace("\\", "/").rsplit("/", 1)[-1])
 

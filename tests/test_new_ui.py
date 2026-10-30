@@ -309,3 +309,28 @@ def test_the_ribbon_matches_the_schedule_it_shows():
     start, end = day_bounds(NOON, None)
     kelvins = ribbon.kelvins(start, end)
     assert kelvins[0] == 3000 and kelvins[12 * 6] == 6500 and kelvins[-1] == 3000
+
+
+def test_a_switch_shows_its_focus_ring_for_the_keyboard_only():
+    """Clicking a switch gave it focus, and a white ring stayed round it.
+    As in Windows 11, the ring shows when Tab brings focus there, not after a click."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from nightlight.ui.settings_parts import ToggleSwitch
+
+    window = QWidget()
+    first, switch = ToggleSwitch("first"), ToggleSwitch("a switch")
+    layout = QVBoxLayout(window)
+    layout.addWidget(first)
+    layout.addWidget(switch)
+    window.show()
+    window.activateWindow()
+    QTest.qWaitForWindowActive(window)
+    QTest.mouseClick(switch, Qt.MouseButton.LeftButton, pos=QPoint(switch.width() - 10, switch.height() // 2))
+    assert switch.isChecked() and switch.hasFocus() and not switch.shows_focus_ring()
+    first.setFocus(Qt.FocusReason.TabFocusReason)
+    switch.setFocus(Qt.FocusReason.TabFocusReason)
+    assert switch.shows_focus_ring()
+    window.hide()

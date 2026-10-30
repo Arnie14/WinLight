@@ -307,3 +307,23 @@ def test_elevated_programs_report_their_exit_code():
     reg = str(pathlib.Path(os.environ["SYSTEMROOT"]) / "System32" / "reg.exe")
     assert win32.run_elevated(reg, rf'query "HKLM\{win32.GAMMA_RANGE_KEY}"', verb="open") == 0
     assert win32.run_elevated(reg, rf'query "HKLM\{win32.GAMMA_RANGE_KEY}" /v NoSuchValue', verb="open") == 1
+
+
+def _pings() -> set[int]:
+    import csv
+    import subprocess
+
+    listing = subprocess.run(["tasklist", "/FI", "IMAGENAME eq PING.EXE", "/FO", "CSV", "/NH"], capture_output=True,
+                             text=True, check=False).stdout
+    return {int(row[1]) for row in csv.reader(listing.splitlines()) if len(row) > 1 and row[1].isdigit()}
+
+
+@windows_only
+def test_a_program_that_doesnt_finish_in_time_is_ended_not_left_running():
+    """After the timeout, reg.exe mustn't go on to change the registry once
+    the app has said it failed: it is ended, not just let go."""
+    ping = str(pathlib.Path(os.environ["SYSTEMROOT"]) / "System32" / "PING.EXE")
+    before = _pings()
+    with pytest.raises(OSError, match="didn't finish"):
+        win32.run_elevated(ping, "-n 30 127.0.0.1", verb="open", timeout_s=0.5)
+    assert _pings() - before == set()

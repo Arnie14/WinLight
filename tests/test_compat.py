@@ -83,3 +83,35 @@ def test_the_report_says_how_and_why_an_hdr_monitor_is_controlled():
     start = next(i for i, line in enumerate(lines) if "How:" in line)
     block = [lines[start]] + [line for line in lines[start + 1:start + 4] if line.startswith(" " * 17)]
     assert len(block) > 1 and all(len(line) <= 100 for line in block)  # wrapped under its label
+
+
+def test_a_display_dimmed_in_software_says_its_backlight_isnt_dimmed():
+    """Software dimming darkens the picture; the backlight stays as bright,
+    so it saves no power and blacks look grey. Users should know."""
+    dimmed = MonitorInfo(3, "Projector", True, key="EPS0001", control="software", channel="software",
+                         details=DisplayDetails("EPS", "Projector", "", "HDMI", False, 2018, 0.0, r"\.\DISPLAY4"))
+    [entry] = compat.entries([dimmed])
+    assert any("not the backlight" in note for note in entry.notes)
+    [plain] = compat.entries([DELL])
+    assert plain.notes == ()
+
+
+def test_cloned_displays_say_they_share_night_light_and_software_dimming():
+    """Windows has one gamma ramp per picture it sends out (its GDI source):
+    displays duplicating one picture (clone mode) get the same night light
+    and software dimming, which users may not expect."""
+    left = MonitorInfo(0, "Left", True, key="AAA1", channel="ddc",
+                       details=DisplayDetails("AAA", "Left", "", "HDMI", False, 2020, 24.0, r"\.\DISPLAY1"))
+    right = MonitorInfo(1, "Right", True, key="BBB2", channel="ddc",
+                        details=DisplayDetails("BBB", "Right", "", "DisplayPort", False, 2020, 24.0, r"\.\DISPLAY1"))
+    entries = compat.entries([left, right, TV])
+    assert any("Right" in note and "same picture" in note for note in entries[0].notes)
+    assert any("Left" in note and "same picture" in note for note in entries[1].notes)
+    assert entries[2].notes == ()
+
+
+def test_the_notes_are_in_the_report():
+    dimmed = MonitorInfo(3, "Projector", True, key="EPS0001", control="software", channel="software",
+                         details=DisplayDetails("EPS", "Projector", "", "HDMI", False, 2018, 0.0, r"\.\DISPLAY4"))
+    text = compat.render(compat.entries([dimmed]), system={})
+    assert "Note:" in text and "not the backlight" in text

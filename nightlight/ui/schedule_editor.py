@@ -42,6 +42,9 @@ class PointRow(QWidget):
         self._level_label.setMinimumWidth(self._level_label.fontMetrics().horizontalAdvance("100%") + 4)
         self.remove = QToolButton(text="✕", toolTip="Remove this time", autoRaise=True)
         self.remove.clicked.connect(self._request_removal)  # bound: a lambda holding self crashed PySide at collection
+        for control, name in ((self.anchor, "Changes at"), (self.time, "Time"), (self.offset, "Minutes from sunrise or sunset"),
+                              (self.level, "Brightness"), (self.remove, "Remove this time")):
+            control.setAccessibleName(name)  # for screen readers: these rows have no title of their own
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)

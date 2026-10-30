@@ -427,6 +427,22 @@ def test_exemptions(window):
     assert apply_button(window).isEnabled()
 
 
+def test_the_brightness_page_shows_the_day_of_its_schedule_applied_or_not(window):
+    window.show()
+    ribbon, page = window.brightness_ribbon, window.schedule.parentWidget()
+    assert not ribbon.isVisibleTo(page)  # no schedule, no day to show
+    points = (SchedulePoint(100, "07:00"), SchedulePoint(30, "20:00"))
+    window.schedule.set_config(BrightnessScheduleConfig(True, "custom", points))
+    window.schedule.changed.emit()
+    assert ribbon.isVisibleTo(page)
+    start = datetime(2026, 6, 15, 0, tzinfo=UTC)
+    levels = ribbon.kelvins(start, start + timedelta(days=1))  # one value per sample, not applied yet
+    assert levels[len(levels) * 3 // 24] == 30 and levels[len(levels) * 12 // 24] == 100
+    window.schedule._rows[1].level.setValue(50)
+    levels = ribbon.kelvins(start, start + timedelta(days=1))
+    assert levels[len(levels) * 3 // 24] == 50  # edits show at once
+
+
 def test_brightness_schedule_steps(window):
     # Beta 4's step list, now the schedule editor's points: the same assertions.
     points = (SchedulePoint(80, "07:00"), SchedulePoint(40, anchor=Anchor.SUNSET, offset_minutes=-30))
@@ -826,3 +842,44 @@ def test_no_24_hour_preview_for_a_day_that_doesnt_change(monkeypatch):
     window, controller, _gamma = day_preview_window(monkeypatch, NightLightConfig(enabled=True, mode=Mode.ALWAYS))
     assert window._day_row.isHidden()
     controller.shutdown()
+
+
+def test_closing_with_unsaved_changes_asks_to_apply_or_discard(window, monkeypatch):
+    """Closing with unsaved changes asked nothing and kept them for the next
+    opening. Now the window asks: Apply, Discard, or Cancel (keep editing)."""
+    monkeypatch.setattr(window, "_is_users_close", lambda event: True)  # the title bar's X, Alt+F4
+    window.show()
+    window.night_temperature.setValue(3000)
+    window.close()
+    box = window._close_box
+    assert window.isVisible() and box is not None and "Night Light" in box.informativeText()
+    box.button(QMessageBox.StandardButton.Cancel).click()  # keep editing
+    assert window.isVisible() and window.night_temperature.value() == 3000
+    window.close()
+    window._close_discard.click()
+    assert not window.isVisible() and window.current_config() == window._saved  # opened again: as saved
+    window.show()
+    window.night_temperature.setValue(3100)
+    applied = []
+    window.applied.connect(applied.append)
+    window.close()
+    window._close_apply.click()
+    assert not window.isVisible() and applied and applied[-1].night_light.night_temperature == 3100
+
+
+def test_closing_without_changes_asks_nothing(window, monkeypatch):
+    monkeypatch.setattr(window, "_is_users_close", lambda event: True)
+    window.show()
+    window.close()
+    assert not window.isVisible() and window._close_box is None
+
+
+def test_quitting_the_app_is_never_held_up_by_unsaved_changes(window):
+    """Qt asks every window to close when the app quits, and a window that
+    refuses cancels the quit (tray Quit, the installer's --quit, signing out).
+    That close isn't the user's: unsaved changes are dropped, nothing asked."""
+    window.show()
+    window.night_temperature.setValue(3000)
+    window.close()  # as quitting closes it: not spontaneous
+    assert not window.isVisible() and window._close_box is None
+    assert window.current_config() == window._saved

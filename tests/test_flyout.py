@@ -273,11 +273,20 @@ def test_suspend_button_suspends_until_resumed_with_timed_choices_on_its_arrow()
     controller.shutdown()
 
 
-def test_with_night_light_off_the_button_only_offers_to_activate(flyout):
+def test_with_night_light_off_activate_is_a_split_button_like_suspend(flyout):
+    """Activate drew its menu arrow over its own text (an instant-popup
+    button); it's a split button like Suspend now: a click activates until
+    turned off, the arrow has the timed choices."""
     from PySide6.QtWidgets import QToolButton
 
+    from nightlight.core.schedule import OverrideKind
+
     panel, _ = flyout
-    assert panel._toggle.text() == "Activate"
-    assert panel._toggle.popupMode() is QToolButton.ToolButtonPopupMode.InstantPopup
-    panel._on_toggle_clicked()  # (a click opens the menu) never suspends night light that is off
-    assert panel._controller.override is None
+    button = panel._toggle
+    assert button.text() == "Activate" and button.popupMode() is QToolButton.ToolButtonPopupMode.MenuButtonPopup
+    assert button.menu() is not None and button.menu().actions()  # the timed choices
+    button.click()
+    assert panel._controller.override.kind is OverrideKind.ACTIVATE and panel._controller.override.until is None
+    assert button.text() == "Turn Off" and button.menu() is None
+    button.click()
+    assert panel._controller.override is None and button.text() == "Activate"

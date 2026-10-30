@@ -28,6 +28,7 @@ from nightlight.core.settings import (
     DEFAULT_SCHEDULE_TRANSITION,
     Anchor,
     BrightnessScheduleConfig,
+    NightLightConfig,
     SchedulePoint,
     parse_hhmm,
 )
@@ -118,6 +119,14 @@ class ScheduledLevel:
 
 
 _UTC = UTC
+
+
+def location_of(night_light: NightLightConfig) -> tuple[float, float] | None:
+    """The Night Light location, which sunrise and sunset points use too;
+    None when none is set."""
+    if night_light.timezone or (night_light.latitude, night_light.longitude) != (0.0, 0.0):
+        return night_light.latitude, night_light.longitude
+    return None
 
 
 def sun_times(day: date, zone: tzinfo, location: tuple[float, float] | None) -> tuple[datetime, datetime, bool]:

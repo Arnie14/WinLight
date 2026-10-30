@@ -25,6 +25,7 @@ from nightlight.brightness.wake_report import WakeReport
 from nightlight.cli.commands import CommandHandler
 from nightlight.color.controller import NightLightController
 from nightlight.color.exemptions import ForegroundWatcher
+from nightlight.core.brightness_schedule import location_of
 from nightlight.core.clock import zone_named
 from nightlight.core.schedule import pausing_held
 from nightlight.core.shortcuts import (
@@ -437,10 +438,7 @@ class NightLightApp:
 
     def _location(self) -> tuple[float, float] | None:
         """The Night Light location, which sunrise and sunset schedule points use too."""
-        night_light = self._config.night_light
-        if night_light.timezone or (night_light.latitude, night_light.longitude) != (0.0, 0.0):
-            return night_light.latitude, night_light.longitude
-        return None
+        return location_of(self._config.night_light)
 
     def _idle_held(self) -> bool:
         """Whether not to dim for idle now. Not just because a window is

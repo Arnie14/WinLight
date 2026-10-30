@@ -51,6 +51,7 @@ class CompatibilityEntry:
     night_light: str
     why: str = ""  # how its brightness is controlled, and why
     calibration: str = ""  # how its color calibration stands ("In use", "None"); "" if unknown
+    notes: tuple[str, ...] = ()  # what to know about it: software dimming, a picture shared in clone mode
 
     @property
     def summary(self) -> str:
@@ -78,6 +79,12 @@ def entries(monitors: list[MonitorInfo], states: dict | None = None, warmest: di
     accepted there, where it refused warmer; `calibrations` a GDI name to
     how its color calibration stands."""
     states, warmest, calibrations = states or {}, warmest or {}, calibrations or {}
+    # Windows has one gamma ramp per picture it sends out (GDI source): displays
+    # duplicating one picture (clone mode) share night light and software dimming.
+    by_source: dict[str, list[str]] = {}
+    for info in monitors:
+        if info.details and info.details.source:
+            by_source.setdefault(info.details.source, []).append(info.name)
     result = []
     for info in monitors:
         details = info.details
@@ -97,6 +104,14 @@ def entries(monitors: list[MonitorInfo], states: dict | None = None, warmest: di
             night_light = f"Yes, down to {warmest[source]} K (Windows' limit; GdiIcmGammaRange lifts it)"
         else:
             night_light = "Yes"
+        notes = []
+        if info.supported and info.channel == "software":
+            notes.append("Dimmed in software: the picture is darkened, not the backlight, so it saves no power and "
+                         "blacks turn grey")
+        others = [name for name in by_source.get(source, []) if name != info.name] if source else []
+        if others:
+            notes.append(f"Shows the same picture as {', '.join(others)} (clone mode): Windows gives them one night light "
+                         "and software dimming, so those can't differ between them; their own brightness controls still can")
         result.append(
             CompatibilityEntry(
                 name=info.name,
@@ -116,6 +131,7 @@ def entries(monitors: list[MonitorInfo], states: dict | None = None, warmest: di
                 night_light=night_light,
                 why=info.why,
                 calibration=calibrations.get(source, ""),
+                notes=tuple(notes),
             )
         )
     return result
@@ -165,6 +181,7 @@ def render(items: list[CompatibilityEntry], system: dict[str, str] | None = None
             ("Size", f'{e.diagonal_inches:g}"' if e.diagonal_inches else ""),
             ("HDR", "on" if e.hdr else "off"),
             ("Identity", e.key),
+            *(("Note", note) for note in e.notes),
         ]
         lines += [textwrap.fill(f"   {label + ':':<14}{value}", width=100, subsequent_indent=" " * 17) for label, value in facts if value]
         if not e.works:

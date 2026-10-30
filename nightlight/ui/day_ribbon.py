@@ -5,7 +5,8 @@ as the gamma ramps), with a needle at the time shown.
 
 In Settings it follows the settings on the page, applied or not, so changing
 the times shows the day changing; the 24-hour preview moves its needle. The
-panel shows a slim one under Night Light.
+panel shows a slim one under Night Light. The Brightness page shows a day of
+its schedule the same way, darker where the level is lower.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, tzinfo
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QLinearGradient, QPainter, QPalette, QPen
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPalette, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from nightlight.core.clock import wall_time
@@ -26,6 +27,11 @@ SLIM_BAR = 5
 HOURS = (0, 6, 12, 18, 24)
 REDRAW_MS = 60_000  # the needle moves a pixel or so a minute
 NEUTRAL = 6500
+
+
+def brightness_color(level: float) -> QColor:
+    """A brightness level (0 to 100) as a grey: dim to white."""
+    return QColor.fromRgbF(*([0.16 + 0.84 * max(0.0, min(1.0, level / 100))] * 3))
 
 
 def day_bounds(moment: datetime, zone: tzinfo | None) -> tuple[datetime, datetime]:
@@ -40,9 +46,15 @@ def day_bounds(moment: datetime, zone: tzinfo | None) -> tuple[datetime, datetim
 
 class DayRibbon(QWidget):
     def __init__(self, temperature_at: Callable[[datetime], int], now: Callable[[], datetime], slim: bool = False,
-                 zone: Callable[[], tzinfo | None] = lambda: None) -> None:
+                 zone: Callable[[], tzinfo | None] = lambda: None, color_of: Callable[[float], QColor] = kelvin_color,
+                 fallback: int = NEUTRAL, name: str = "Night light today") -> None:
+        """`temperature_at` gives the value at a moment, painted with
+        `color_of`: kelvins by default, or brightness levels with
+        brightness_color. `fallback` is painted when it can't be worked out."""
         super().__init__()
         self._temperature_at = temperature_at
+        self._color_of = color_of
+        self._fallback = fallback
         self._now = now
         self._zone = zone
         self._slim = slim
@@ -51,8 +63,8 @@ class DayRibbon(QWidget):
         self._day: tuple[date, datetime] | None = None
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(SLIM_BAR + 2 if slim else BAR + self.fontMetrics().height() + 6)
-        self.setToolTip("Night light today, from midnight to midnight; the line is now")
-        self.setAccessibleName("Night light today")
+        self.setToolTip(f"{name}, from midnight to midnight; the line is now")
+        self.setAccessibleName(name)
         self._timer = QTimer(self, interval=REDRAW_MS)
         self._timer.timeout.connect(self.update)
         self._timer.start()
@@ -75,7 +87,7 @@ class DayRibbon(QWidget):
             try:
                 self._kelvins = [self._temperature_at(start + step * i) for i in range(SAMPLES + 1)]
             except Exception:  # a setting half typed in mustn't stop the window painting
-                self._kelvins = [NEUTRAL] * (SAMPLES + 1)
+                self._kelvins = [self._fallback] * (SAMPLES + 1)
         return self._kelvins
 
     def paintEvent(self, _event) -> None:
@@ -92,7 +104,7 @@ class DayRibbon(QWidget):
         gradient = QLinearGradient(QPointF(bar.left(), 0), QPointF(bar.right(), 0))
         for i, kelvin in enumerate(self.kelvins(start, end)):
             # Softened toward the window in dark mode, so day isn't a glaring white bar.
-            color = kelvin_color(kelvin)
+            color = self._color_of(kelvin)
             gradient.setColorAt(i / SAMPLES, blend(window, color, 0.78) if dark else color)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

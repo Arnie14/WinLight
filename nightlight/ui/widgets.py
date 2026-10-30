@@ -153,6 +153,7 @@ class GlyphButton(QToolButton):
 
     def __init__(self, draw: Callable[[QColor], QIcon], tooltip: str, size: int = 16) -> None:
         super().__init__(toolTip=tooltip, autoRaise=True)
+        self.setAccessibleName(tooltip)  # no text: without this a screen reader says only "button"
         self._draw = draw
         self.setIconSize(QSize(size, size))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -232,6 +233,7 @@ class MonitorBrightness(QWidget):
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(info.minimum, 100)  # e.g. above 0 for laptop panels, see MonitorInfo
         self.slider.setPageStep(10)
+        self.slider.setAccessibleName(f"{name or info.name} brightness")  # which display, for screen readers
         self.slider.setEnabled(False)  # until the display's state says it can be changed
         layout.addWidget(self.slider)
         self.explanation = SecondaryLabel("", scale=0.9)
@@ -352,6 +354,7 @@ class TemperatureSlider(QWidget):
         self.slider.setInvertedControls(True)
         self.slider.setMinimumWidth(160)
         self.slider.setToolTip("Left: cool, no filter. Right: warm.")
+        self.setFocusProxy(self.slider)  # so a row's name for this control names the slider (settings_parts.SettingRow)
         self._label = QLabel()
         self._label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._label.setMinimumWidth(self._label.fontMetrics().horizontalAdvance("10000 K"))

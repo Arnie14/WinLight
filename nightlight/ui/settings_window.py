@@ -55,12 +55,13 @@ from nightlight.config import (
 )
 from nightlight.core import locations
 from nightlight.core.brightness_schedule import describe as describe_schedule
+from nightlight.core.brightness_schedule import location_of, scheduled_level
 from nightlight.core.colortemp import limited_displays
 from nightlight.core.schedule import OverrideKind, compute_state
 from nightlight.hardware.gamma import GammaBusy
 from nightlight.ui import icons
 from nightlight.ui import theme as theme_module
-from nightlight.ui.day_ribbon import DayRibbon
+from nightlight.ui.day_ribbon import DayRibbon, brightness_color
 from nightlight.ui.night_light_text import is_night_light_on, night_light_status, schedule_description
 from nightlight.ui.preview_notice import PreviewNotice
 from nightlight.ui.schedule_editor import ScheduleEditor
@@ -227,6 +228,7 @@ class SettingsWindow(QWidget):
         self._recording = False
         self._warmer_unlocked = warmer_unlocked
         self._restore_box: QMessageBox | None = None  # asking whether to restore the defaults
+        self._close_box: QMessageBox | None = None  # asking about unsaved changes when closing
         self._unlock_outcome = ""  # how the last Unlock or Lock again went
         self._locked_again = False  # locked again since Windows last applied the limit (at sign-in)
         self._preview_notice: PreviewNotice | None = None  # made when a slider is first held
@@ -240,6 +242,7 @@ class SettingsWindow(QWidget):
         self._saved = replace(config, night_light=controller.config)
         self._mode_while_off = self._saved.night_light.mode
         self._ribbon_config = self._saved.night_light  # what the day ribbon shows
+        self._brightness_ribbon_config = (self._saved.brightness_schedule, location_of(self._saved.night_light))
         self.setWindowTitle(f"{APP_NAME} Settings")
         self.setWindowIcon(icons.night_icon())
 
@@ -444,6 +447,7 @@ class SettingsWindow(QWidget):
         for key, label in SWITCHING_TIMES.items():
             self.mode.addItem(label, key)
         self.location = _location_combo()
+        self.location.setAccessibleName("Location")
         self.use_system_zone = QPushButton("Detect", toolTip="Use the city of your PC's time zone")
         self.use_system_zone.clicked.connect(self._pick_system_zone)
         self._location_row = QWidget()
@@ -497,6 +501,8 @@ class SettingsWindow(QWidget):
         self.never_pause_from.setFixedWidth(WIDE_FIELD)
         self.never_pause_time = QTimeEdit(displayFormat="HH:mm")
         self.never_pause_time.setFixedWidth(NARROW_FIELD)
+        self.never_pause_from.setAccessibleName("Never pause starting from")
+        self.never_pause_time.setAccessibleName("Never pause starting at")
         self._never_pause_when = QWidget()
         when = QHBoxLayout(self._never_pause_when)
         when.setContentsMargins(0, 0, 0, 0)
@@ -615,23 +621,23 @@ class SettingsWindow(QWidget):
         layout.addWidget(self._sleep_card)
         layout.addWidget(SectionLabel("Pause night light"))
         pause = Card()
-        pause.add(SettingRow("Fullscreen apps", "Pauses while any app fills a display, such as a game, a video or a browser "
-                             "in fullscreen", self.exempt_fullscreen))
-        pause.add(SettingRow("Video, calls, games and color work", "Pauses automatically while an app keeps the screen on for "
-                             "video playback, a call or a presentation, while a game runs in exclusive fullscreen, and for "
-                             "photo, video and design apps such as Photoshop, Lightroom and DaVinci Resolve. Winlight "
-                             "decides from the information Windows provides, which doesn't name the app or display "
-                             "involved, so some cases may be missed or paused on the display in front",
-                             self.pause_automatically))
-        pause.add(SettingRow("Selected apps", "Pauses while a listed app is in front, fullscreen or not. Other apps are "
-                             "not affected", self.pause_for_apps, below=self.exempt_apps))
-        pause.add(SettingRow("Never pause late at night", "Keeps night light on for every app, whatever the options above, "
-                             "from this point until the morning transition starts, so a late video or game doesn't undo it",
+        pause.add(SettingRow("Fullscreen apps", "Pauses whenever any app covers the whole display, whatever it is: a "
+                             "game, a film, a browser or slides in fullscreen. Night light returns when the app leaves "
+                             "fullscreen", self.exempt_fullscreen))
+        pause.add(SettingRow("Video, calls and color work", "Pauses for what an app is doing, even in a window: while "
+                             "Windows reports a video playing, a call or a presentation, or a game in exclusive fullscreen, "
+                             "and while a photo, video or design app is in front (Photoshop, Lightroom, DaVinci Resolve). "
+                             "Windows doesn't say which app it is, so now and then one may be missed, or the display in "
+                             "front paused instead", self.pause_automatically))
+        pause.add(SettingRow("Selected apps", "Pauses whenever an app you choose is in front, in a window or fullscreen",
+                             self.pause_for_apps, below=self.exempt_apps))
+        pause.add(SettingRow("Never pause late at night", "Keeps night light on even for the apps above, from the point you "
+                             "choose until the morning, so a late film or game doesn't undo it",
                              self.never_pause, below=self._never_pause_when))
         layout.addWidget(pause)
-        pause_hint = SecondaryLabel("The first three options work independently, and the last one overrides them late at night. "
-                                    "Night light pauses only on the display showing the app, and returns when you switch away, "
-                                    "minimize or close it.", scale=0.9)
+        pause_hint = SecondaryLabel("Each option works on its own: turn on any of them. Night light pauses only on the display "
+                                    "showing the app, and comes back when you switch away from it, minimize it or close it.",
+                                    scale=0.9)
         pause_hint.setWordWrap(True)
         pause_hint.setContentsMargins(4, 8, 4, 0)
         layout.addWidget(pause_hint)
@@ -639,6 +645,14 @@ class SettingsWindow(QWidget):
 
     def _brightness_page(self) -> QWidget:
         page, layout = _page("Brightness", "Schedule brightness by time of day, and choose how it is kept.")
+        # The schedule's day, as Night Light shows its own: from the settings on this page, applied or not.
+        self.brightness_ribbon = DayRibbon(self._scheduled_level_at, self._controller.now, zone=lambda: self._controller.zone,
+                                           color_of=brightness_color, fallback=100, name="Brightness today")
+        self._brightness_day = QWidget()  # shown while the schedule is on
+        day_layout = QVBoxLayout(self._brightness_day)
+        day_layout.setContentsMargins(0, 0, 0, 14)
+        day_layout.addWidget(self.brightness_ribbon)
+        layout.addWidget(self._brightness_day)
         layout.addWidget(self.schedule)
         layout.addWidget(SectionLabel("Behavior"))
         options = Card()
@@ -915,7 +929,18 @@ class SettingsWindow(QWidget):
         self.move(area.x() + max(0, (area.width() - width) // 2),
                   area.y() + max(0, (area.height() - height - FRAME_HEIGHT) // 2))
 
+    def _is_users_close(self, event) -> bool:
+        """The title bar's X or Alt+F4 (spontaneous), not the app quitting:
+        Qt closes every window then, and a refusal would cancel the quit."""
+        return event.spontaneous()
+
     def closeEvent(self, event) -> None:
+        if self.current_config() != self._saved:
+            if self._is_users_close(event):
+                event.ignore()  # asked first; closed again once answered
+                self._ask_before_closing()
+                return
+            self._load(self._saved)  # quitting: unsaved changes are dropped, nothing asked
         if self._recording:
             self._set_recording(False)  # closed while recording: the shortcuts work again
         self._stop_day_preview()
@@ -928,6 +953,39 @@ class SettingsWindow(QWidget):
         if (focused := self.focusWidget()) is not None:
             focused.clearFocus()  # no outline left on the entry or field used last
         super().closeEvent(event)
+
+    def _ask_before_closing(self) -> None:
+        """Apply, Discard or Cancel (keep editing). Window-modal and opened,
+        not exec()'d: no nested event loop."""
+        if self._close_box is not None:
+            return
+        pages = [PAGES[i] for i in sorted(changed_pages(self.current_config(), self._saved))]
+        named = pages[0] if len(pages) == 1 else ", ".join(pages[:-1]) + " and " + pages[-1]
+        box = QMessageBox(QMessageBox.Icon.Question, f"{APP_NAME}: Unsaved changes", "Apply your changes before closing?",
+                          parent=self)
+        box.setInformativeText(f"There are unsaved changes on {named}.")
+        self._close_apply = box.addButton("Apply", QMessageBox.ButtonRole.AcceptRole)
+        self._close_discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(self._close_apply)
+        box.setWindowModality(Qt.WindowModality.WindowModal)
+        box.finished.connect(self._close_answered)
+        self._close_box = box
+        box.open()
+
+    def _close_answered(self, _result: int) -> None:
+        box, self._close_box = self._close_box, None
+        if box is None:
+            return
+        clicked = box.clickedButton()
+        box.deleteLater()
+        if clicked is self._close_apply:
+            self._apply()
+        elif clicked is self._close_discard:
+            self._load(self._saved)
+        else:
+            return  # Cancel: keep editing
+        self.close()  # nothing unsaved now: closes
 
     def _scroll_to_top(self, *_args) -> None:
         if isinstance(area := self._stack.currentWidget(), QScrollArea):
@@ -1082,8 +1140,19 @@ class SettingsWindow(QWidget):
         self.night_start.setTime(self.bedtime.time().addSecs(-SLEEP_LEAD_HOURS * 3600))
         self.day_start.setTime(self.wake_time.time().addSecs(-SLEEP_TRANSITION_MINUTES * 60))
 
+    def _scheduled_level_at(self, moment: datetime) -> int:
+        schedule, location = self._brightness_ribbon_config
+        state = scheduled_level(schedule, moment, self._controller.zone, location)
+        return 100 if state is None else state.level
+
     def _update_schedule_status(self) -> None:
-        config = self.current_config().brightness_schedule
+        current = self.current_config()
+        ribbon = (current.brightness_schedule, location_of(current.night_light))
+        if ribbon != self._brightness_ribbon_config:
+            self._brightness_ribbon_config = ribbon
+            self.brightness_ribbon.refresh()
+        self._brightness_day.setVisible(current.brightness_schedule.enabled)
+        config = current.brightness_schedule
         if not config.enabled:
             self.schedule.set_status("")
             return
@@ -1124,6 +1193,8 @@ class SettingsWindow(QWidget):
                 description += f"\nNight light: {entry.night_light.split(':')[0].split(',')[0]}"
             if entry.calibration:
                 description += f"\nCalibration: {entry.calibration}"
+            for note in entry.notes:
+                description += f"\n{note}"
             row = SettingRow(entry.name + (" (built-in)" if entry.built_in else ""), description,
                              StatusBadge("Works" if entry.works else "Not controllable", entry.works), icon=icons.display_glyph(
                                  self.palette().color(QPalette.ColorRole.WindowText)))
@@ -1134,6 +1205,7 @@ class SettingsWindow(QWidget):
                 entry.why,
                 entry.detail,
                 f"Night light: {entry.night_light}",
+                *entry.notes,
             ) if line))
             card.add(row)
             self.display_rows.append(row)
