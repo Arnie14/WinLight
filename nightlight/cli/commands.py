@@ -21,7 +21,7 @@ from nightlight.color.controller import NightLightController
 from nightlight.config import AppConfig
 from nightlight.core.schedule import OverrideKind
 from nightlight.hardware.brightness import MonitorInfo
-from nightlight.ui.night_light_text import is_night_light_on, night_light_status
+from nightlight.ui.night_light_text import is_night_light_on, night_light_status, toggle_night_light
 
 log = logging.getLogger(__name__)
 
@@ -106,8 +106,8 @@ class CommandHandler:
     def _night_light(self, action: str) -> dict:
         controller = self._controller
         if action == "toggle":
-            action = "off" if is_night_light_on(controller) else "on"
-        if action == "suspend":
+            toggle_night_light(controller)  # as the keyboard shortcut: switched back, it follows the schedule
+        elif action == "suspend":
             controller.set_override(OverrideKind.SUSPEND, None)
         elif action == "resume":
             controller.clear_override()

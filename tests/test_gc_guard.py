@@ -3,10 +3,11 @@
 
 import gc
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import QObject
 
-from nightlight.system import gc_guard
+from nightlight import gc_guard
 
 
 class Cycle:
@@ -81,7 +82,7 @@ _Com.__module__ = "fakecom.client"
 def test_release_cycles_frees_tied_objects_now_without_a_collection():
     import gc
 
-    from nightlight.system.gc_guard import release_cycles
+    from nightlight.gc_guard import release_cycles
 
     released = []
     a, b = _Com(released), _Com(released)
@@ -101,7 +102,7 @@ def test_release_cycles_frees_tied_objects_now_without_a_collection():
 
 
 def test_release_cycles_leaves_other_modules_alone():
-    from nightlight.system.gc_guard import release_cycles
+    from nightlight.gc_guard import release_cycles
 
     class Plain:
         pass
@@ -111,3 +112,31 @@ def test_release_cycles_leaves_other_modules_alone():
     root.child.value = 5
     assert release_cycles(root, ("fakecom",)) == 0
     assert root.child.value == 5
+
+
+def test_no_connected_lambda_holds_self():
+    """A lambda using self, connected to a signal, makes a reference cycle
+    (self -> widget -> connection -> lambda -> self). Collected, PySide
+    deleted such widgets twice and the process crashed as it exited (the
+    first 0.5.0 build). Connect a bound method instead: PySide holds those
+    without keeping self alive."""
+    import ast
+
+    root = Path(__file__).resolve().parent.parent / "nightlight"
+    # The pipe's sockets belong to Qt (the server's children, deleted with
+    # deleteLater on hang-up), so collecting their wrappers deletes nothing;
+    # the lambdas keep each socket's wrapper, and so its buffer's key, stable.
+    allowed = {"system/single_instance.py"}
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        if path.relative_to(root).as_posix() in allowed:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "connect"):
+                continue
+            for argument in node.args:
+                if isinstance(argument, ast.Lambda) and any(
+                        isinstance(name, ast.Name) and name.id == "self" for name in ast.walk(argument.body)):
+                    found.append(f"{path.relative_to(root.parent)}:{node.lineno}")
+    assert not found, found

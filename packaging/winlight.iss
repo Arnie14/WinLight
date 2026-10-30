@@ -135,18 +135,43 @@ begin
   end;
 end;
 
+var
+  DeleteSettings: Boolean;
+
+{ Asked first, before anything is removed. An uninstall is a full uninstall,
+  so deleting is the default, also when uninstalling silently (winget,
+  scripts; with /SUPPRESSMSGBOXES the default answer is taken). Upgrades
+  install over the old version without uninstalling, so they keep settings. }
+function InitializeUninstall(): Boolean;
+begin
+  DeleteSettings := True;
+  if not UninstallSilent then
+    DeleteSettings := MsgBox('Also delete your Winlight settings?' + #13#10#13#10 +
+      'Winlight doesn''t leave anything behind: uninstalling it is a full uninstall, so your settings, ' +
+      'logs and saved reports (in ' + ExpandConstant('{localappdata}') + '\WinLight) are deleted too.' + #13#10#13#10 +
+      'If you reinstall Winlight later, it starts with default settings: deleted settings can''t be brought back.' + #13#10#13#10 +
+      'Choose No to keep them for reinstalling.',
+      mbConfirmation, MB_YESNO) = IDYES;
+  Result := True;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
     QuitRunningCopy(ExpandConstant('{app}\Winlight.exe'));
   { Don't leave a start-up entry pointing at a deleted program, nor its
     on/off switch (the app may have written both, for the portable zip or
-    an older version). Settings in %LOCALAPPDATA%\WinLight are kept, as
-    most apps do. }
+    an older version). }
   if CurUninstallStep = usPostUninstall then
   begin
     RegDeleteValue(HKEY_CURRENT_USER, RunKey, 'Winlight');
     RegDeleteValue(HKEY_CURRENT_USER, ApprovedKey, 'Winlight');
     RemoveFromPath(ExpandConstant('{app}'));
+    if DeleteSettings then
+    begin
+      { The data folder, and its name before 0.3.0 if an old version left it. }
+      DelTree(ExpandConstant('{localappdata}\WinLight'), True, True, True);
+      DelTree(ExpandConstant('{localappdata}\night-light'), True, True, True);
+    end;
   end;
 end;

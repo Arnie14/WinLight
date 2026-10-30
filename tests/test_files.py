@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from nightlight.system import files
+from nightlight import files
 
 
 def test_writes_and_replaces(tmp_path):

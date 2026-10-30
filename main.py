@@ -15,9 +15,9 @@ from PySide6.QtWidgets import QApplication
 from nightlight import APP_NAME, config
 from nightlight.app import NightLightApp
 from nightlight.cli import client as cli
+from nightlight.gc_guard import MainThreadGarbageCollector
 from nightlight.hardware import BACKENDS, create_backends
 from nightlight.support.privacy import ScrubbingFormatter
-from nightlight.system.gc_guard import MainThreadGarbageCollector
 from nightlight.system.single_instance import SingleInstance
 from nightlight.ui import icons
 
@@ -198,7 +198,12 @@ def set_app_id() -> None:
     import ctypes
 
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+        # Its own WinDLL with declared types, as every other Windows call: the
+        # shared ctypes.windll would hand other modules this function's types.
+        shell32 = ctypes.WinDLL("shell32")
+        shell32.SetCurrentProcessExplicitAppUserModelID.argtypes = [ctypes.c_wchar_p]
+        shell32.SetCurrentProcessExplicitAppUserModelID.restype = ctypes.HRESULT  # raises OSError on failure
+        shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     except (AttributeError, OSError):
         log.warning("Could not set the taskbar identity; windows may show Python's icon", exc_info=True)
 

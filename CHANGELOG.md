@@ -2,6 +2,37 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.6.0 Beta 1 (2026-10-29)
+
+### Added
+
+- **Check for updates** (Settings > General > Updates), off unless you turn it on. Once a day, and when you click Check now, Winlight asks GitHub whether a newer version is out and, if so, says so once in a notification; clicking it opens the release page. It downloads and installs nothing. This is the only time Winlight connects to the internet: leave it off if you prefer that. While Winlight is in beta, turning it on is recommended.
+
+### Changed
+
+- **Switching night light back returns to the schedule.** The night light shortcut and `--night-light toggle` switch night light on or off until switched back; switching back now follows the schedule again. Before, pressing twice in the day left night light "suspended until manually resumed", so the evening never came.
+- **Shortcuts for every display leave alone a display set to "No automatic DDC/CI writes in HDR"** while it's in HDR. A shortcut for that display still changes it.
+- **"Dimmer" never raises a display, and "Brighter" never lowers one**, also from below a display's lowest level.
+- **Alt+Space can't be a shortcut** (it opens every window's menu, and PowerToys Run). **Ctrl+Alt with a letter, digit or punctuation key works, with a warning**: on keyboards with AltGr, Ctrl+Alt+E is AltGr+E, which types € on German, French and Polish layouts, and wouldn't type any more.
+- A shortcut Windows refuses says "Windows or another app has these keys" (Win+L is Windows' own), and Report a Problem lists every shortcut and how it stands.
+- Settings > Displays explains under its list that "No automatic DDC/CI writes in HDR" is for troubleshooting, and which features a display loses with it.
+- **The uninstaller asks whether to delete your settings** too, and does by default: an uninstall removes everything.
+
+### Fixed
+
+- A settings file with a number too large to read (such as `1e400`) stopped Winlight from starting. Such a value now falls back to its default, and any other unforeseen problem reading settings starts Winlight with default settings, keeping the file aside.
+- A Windows message for a shortcut id outside an app's range raised an error inside the message handler; it's ignored.
+- Signing out stopped the shortcuts, but a recording field losing focus afterwards registered them again.
+
+### For developers
+
+- `tests/test_shortcut_safeguards.py`: the key rules' edge cases, settings that can't be read, the service's lifecycle, the toggle from every starting state (shortcut and command line alike), real key presses, another process refused the keys, quitting leaving none registered, 10,000 random presses with failures, and garbage collection and threads.
+- Shortcuts past the 32 kept are logged.
+- No lambda connected to a signal holds `self` any more (a test checks every module): the settings window, its widgets, the brightness schedule, the laptop-key follower and the power-source handling connect bound methods, which can't make the reference cycles behind 0.5.0's exit crash. The command-line pipe's per-request sockets are the one exception, and say why.
+- Layers: the settings model moved to `core/settings.py` (`config.py` keeps reading and saving it, and its names); atomic writes and garbage collection moved to `nightlight/files.py` and `nightlight/gc_guard.py`, and crash safe mode to `hardware/safe_mode.py`. A test checks which layers each one may import.
+- `SetCurrentProcessExplicitAppUserModelID` is called with declared types, as every other Windows call.
+- The settings file's version is 3 (the update check).
+
 ## 0.5.0 Beta 1 (2026-10-26)
 
 ### Added

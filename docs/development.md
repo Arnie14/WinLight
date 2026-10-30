@@ -105,21 +105,25 @@ CHANGELOG.md                changes in each version
 LICENSE                     GNU GPL v3.0
 nightlight/
   app.py                    wires the services to the UI
-  config.py                 settings, their JSON file, and the data folder
-  core/                     pure logic, no Qt or hardware: colortemp (ramps, limits), schedule (night light),
-                            brightness_schedule (and presets), clock (daylight saving), edid, icc (calibrations in
-                            color profiles), locations, shortcuts (key names and rules)
+  config.py                 reading and saving the settings (their JSON file), and the data folder
+  files.py                  atomic writes
+  gc_guard.py               garbage collection on the main thread
+  core/                     pure logic, no Qt, hardware or files: settings (the settings model), colortemp
+                            (ramps, limits), schedule (night light), brightness_schedule (and presets), clock
+                            (daylight saving), edid, icc (calibrations in color profiles), locations, shortcuts
+                            (key names and rules)
   hardware/                 backend interfaces (brightness, gamma), windows + win32 (the Windows display APIs),
                             winsystem (foreground app, power and session events, the pipe's owner, Windows
-                            Night Light), calls (time limits), kde (Linux development backend)
+                            Night Light), calls (time limits), safe_mode (skipping a display that crashed),
+                            kde (Linux development backend)
   brightness/               monitors (the one queue of monitor calls, on a worker thread), memory (remembered
                             levels), scheduler (the brightness schedule), idle_dim, keys (the laptop-key
                             follower), power_source (plugging in and unplugging), wake_report (re-detection
                             after waking)
   color/                    controller (night light on the displays), exemptions (pausing per display)
   system/                   autostart, single_instance (one copy, and the command-line pipe), watcher (display
-                            changes, sleep), gc_guard (garbage collection on the main thread), files (atomic
-                            writes), safe_mode, shortcuts (registering and running them)
+                            changes, sleep), shortcuts (registering and running them), updates (the optional
+                            update check)
   support/                  diagnostics (Report a Problem), privacy (scrubbing), compat (compatibility report),
                             probe (--probe)
   cli/                      client (winlight-cli) and commands (what the app does for it)
@@ -130,7 +134,7 @@ packaging/                  PyInstaller spec, Inno Setup script, installer notes
 tools/                      hardware_checks.py, third_party_notices.py, screenshots.py, make_timezones.py
 tests/                      pytest suite
 docs/                       features, why-winlight, command-line, windows-notes, test plans, development;
-                            history/ (earlier reports); screenshots/
+                            history/ (earlier reports); plans/ (work not started yet: msix-package); screenshots/
 .github/workflows/          release.yml: lint, test, build and publish
 ```
 

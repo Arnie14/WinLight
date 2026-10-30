@@ -403,7 +403,7 @@ def reports():
 @section("7. Pausing, idle layer, crash recovery, safe mode and system queries")
 def features():
     from nightlight.hardware import winsystem
-    from nightlight.system.safe_mode import SafeMode
+    from nightlight.hardware.safe_mode import SafeMode
 
     if gamma_usable("pausing and the idle layer on the gamma ramp"):
         base = current_ramp()

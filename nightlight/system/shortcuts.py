@@ -30,7 +30,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from nightlight.core.shortcuts import MOD_NOREPEAT, REPEATING, Shortcut, parse
+from nightlight.core.shortcuts import MOD_NOREPEAT, REPEATING, WITH_VALUE, Shortcut, parse
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 # Each shortcut's state, as Settings shows it.
 WORKS = "Works"
-TAKEN = "Used by another app"
+TAKEN = "Windows or another app has these keys"  # ERROR_HOTKEY_ALREADY_REGISTERED: Win+L is Windows'
 DUPLICATE = "Same keys as another shortcut"
 UNAVAILABLE = "Shortcuts need Windows"
 FAILED = "Windows refused it"
@@ -63,6 +63,7 @@ class ShortcutService(QObject):
         self._last_run: dict[int, float] = {}
         self._taken: dict[int, Shortcut] = {}  # id -> shortcut whose keys another app has
         self._paused = False
+        self._stopped = False  # quitting: nothing registers again, whatever asks
         self._retry = QTimer(self, interval=RETRY_MS)
         self._retry.timeout.connect(self._retry_taken)
         events.hotkeyPressed.connect(self._pressed)
@@ -75,10 +76,29 @@ class ShortcutService(QObject):
         """How a shortcut stands ("Works", "Used by another app"...), "" if unknown."""
         return self._status.get(keys, "")
 
+    def report(self) -> list[str]:
+        """Each shortcut and how it stands, for Report a Problem: a failure is
+        never only in Settings. Displays aren't named (a custom name may be personal)."""
+        lines, seen = [], set()
+        for shortcut in self._shortcuts:
+            if shortcut.keys in seen:
+                state = DUPLICATE
+            elif self._stopped:
+                state = "stopped"
+            elif self._paused:
+                state = "let go while a shortcut is recorded"
+            else:
+                state = self._status.get(shortcut.keys, "not registered")
+            seen.add(shortcut.keys)
+            amount = f" {shortcut.value}%" if shortcut.action in WITH_VALUE else ""
+            target = " (one display)" if shortcut.display else ""
+            lines.append(f"{shortcut.keys}: {shortcut.action}{amount}{target}: {state}")
+        return lines
+
     def pause(self, paused: bool) -> None:
         """Let go of every shortcut while one is being recorded (the keys go to
         the recording field instead), and take them back after."""
-        if paused == self._paused:
+        if paused == self._paused or self._stopped:
             return
         self._paused = paused
         if paused:
@@ -87,7 +107,9 @@ class ShortcutService(QObject):
             self._apply()
 
     def stop(self) -> None:
-        self._paused = True
+        """Let go of every shortcut for good (quitting, signing out): a
+        recording field losing focus afterwards doesn't take them back."""
+        self._stopped = self._paused = True
         self._unregister_all()
 
     def _apply(self) -> None:
@@ -124,6 +146,8 @@ class ShortcutService(QObject):
         return error
 
     def _retry_taken(self) -> None:
+        if self._paused:
+            return
         for hotkey_id, shortcut in list(self._taken.items()):
             if self._register(hotkey_id, shortcut) == 0:
                 del self._taken[hotkey_id]

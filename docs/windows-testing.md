@@ -192,7 +192,19 @@ Settings > Brightness > **Change brightness by time of day**:
 - [ ] Switching Schedule between Always off, Always on, Sunset to sunrise and Custom times shows and hides rows without gaps; a page scrolls only when it is taller than the window. Tab reaches every control.
 - [ ] Settings > Displays: rename a display: the panel, `--list` and the diagnostics use the new name; clearing it brings back its own. Hide a display: it's gone from the panel and "Change all displays together", and the schedule, idle dimming and restores leave it alone.
 - [ ] The [command line](command-line.md): `--list`, `--list --json`, `--get --display 1`, `--set 40`, `--set +10 --display 2`, `--set 50 --display <part of a name>`, `--set +10 --panel`, `--night-light on|off|toggle|auto|status`, `--refresh`, `--diagnostics`. Errors say why and exit with 1 (`--display 9`, `--set bright`); with Winlight not running it exits with 2.
-- [ ] Settings > **Shortcuts**: add one, click its field and press Ctrl+Alt+Up; set it to "Brighter by" 10, Apply: it says "Works", and pressing it raises every display by 10%, with a note at the bottom of the screen. Holding it keeps stepping. Add one with keys another app uses (Ctrl+Alt+Del can't be recorded; try one your other tools register): it says "Used by another app". A shortcut for one display changes only that display. Over a game in exclusive fullscreen, pressing a shortcut still works, but no note appears and the game keeps focus.
+- [ ] Settings > **Shortcuts**: add one, click its field and press Ctrl+Alt+Up; set it to "Brighter by" 10, Apply: it says "Works", and pressing it raises every display by 10%, with a note at the bottom of the screen. Holding it keeps stepping. Add one with keys another app uses (Ctrl+Alt+Del can't be recorded; try one your other tools register): it says "Windows or another app has these keys"; quit that app and within 30 seconds it says "Works". A shortcut for one display changes only that display. Over a game in exclusive fullscreen, pressing a shortcut still works, but no note appears and the game keeps focus.
+- [ ] Shortcuts on other keyboards and in other situations:
+  - [ ] AZERTY (French): record Ctrl+Alt+Shift+A and press the key labelled A: it runs. Switch to the US layout: the key labelled Q runs it.
+  - [ ] German layout: record Ctrl+Alt+E: Settings warns about AltGr. Apply, then type AltGr+E in Notepad: no € while it's registered. Remove it: € types again.
+  - [ ] NumLock on, record Ctrl+Alt+Num8 ("Num8"); turn NumLock off: pressing it doesn't run (the key now sends Up). Recording with NumLock off gives "Up".
+  - [ ] Hold a brightness shortcut on the real keyboard for 3 seconds: about 10 steps a second, typing elsewhere doesn't lag.
+  - [ ] A game in exclusive fullscreen, then a borderless one: shortcuts change brightness and night light; no note over the exclusive one; neither loses focus or minimizes.
+  - [ ] Another app holding a combination (AutoHotkey, PowerToys): start Winlight first, then the other app: the other app can't have it. The other way round: "Windows or another app has these keys", until that app quits.
+  - [ ] Sleep and wake, lock and unlock, sign out and in: shortcuts work afterwards without opening Settings. While locked they do nothing.
+  - [ ] Remote Desktop into the PC: shortcuts run in the remote session.
+  - [ ] Restart Windows Explorer (Task Manager): shortcuts still work.
+  - [ ] In Settings, click a shortcut's field and press Alt+F4: note whether Settings closes or "Alt+F4" is recorded (Windows refuses to register it either way).
+  - [ ] An external DDC/CI monitor: hold a brightness shortcut: it steps smoothly and the monitor keeps answering.
 - [ ] Take screenshots of the panel and the settings window in both themes.
 
 ## 10. Diagnostics and privacy
@@ -212,7 +224,7 @@ With a build from [Releases](https://github.com/Arnie14/WinLight/releases), or t
 - [ ] The app folder has `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`; Settings > General > About > View notices opens the notices.
 - [ ] **Start Winlight when I sign in** was ticked in the installer: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has `Winlight` = `"…\Programs\Winlight\Winlight.exe"`, and it starts after signing out and in. Untick it in Settings and Apply: Task Manager > Startup apps shows it Disabled, and `…\Explorer\StartupApproved\Run` has a `Winlight` value starting with `03`. Restarting Winlight changes neither key. Windows Security > Protection history shows nothing for Winlight.
 - [ ] Upgrade with night light on: the running copy quits, the colors go back to normal before files are replaced, and settings are kept. From 0.2.0 or earlier, `%LOCALAPPDATA%\night-light` becomes `%LOCALAPPDATA%\WinLight`.
-- [ ] Uninstall from Settings > Apps: Winlight quits first (colors back to normal); its files, Start menu entry, Run and StartupApproved values are gone; with "Add winlight-cli to PATH" ticked at install, its PATH entry is gone and the rest of PATH is as it was. `%LOCALAPPDATA%\WinLight` (settings) stays.
+- [ ] Uninstall from Settings > Apps: Winlight quits first (colors back to normal); its files, Start menu entry, Run and StartupApproved values are gone; with "Add winlight-cli to PATH" ticked at install, its PATH entry is gone and the rest of PATH is as it was. It asks whether to delete the settings too: Yes (the default) removes `%LOCALAPPDATA%\WinLight`, No keeps it, and a silent uninstall (`unins000.exe /VERYSILENT`) removes it. Upgrading over an installed version keeps the settings.
 - [ ] Portable zip: unzip to another folder and run `Winlight.exe`: it works the same. Turning on "Start Winlight when I sign in" there adds a Run value for that copy.
 - [ ] Note the installer's size, and how long the app takes to start.
 

@@ -36,7 +36,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from nightlight.brightness.monitors import SCHEDULE, USER, MonitorManager, Status
 from nightlight.config import BrightnessScheduleConfig
 from nightlight.core.brightness_schedule import ScheduledLevel, scheduled_level
-from nightlight.system.files import write_atomic
+from nightlight.files import write_atomic
 
 log = logging.getLogger(__name__)
 
@@ -74,15 +74,29 @@ class BrightnessScheduler(QObject):
         self._hidden: Callable[[str], bool] = lambda _key: False
         self._held = False  # idle dimming holds the displays down
         self._timer = QTimer(self, singleShot=True)
-        self._timer.timeout.connect(lambda: self.evaluate("timer"))
+        # Bound methods, not lambdas holding self: a lambda on a child timer's
+        # signal makes a cycle that PySide deletes twice when it's collected.
+        self._timer.timeout.connect(self._on_timer)
         self._tick = QTimer(self, interval=TICK_MS)
-        self._tick.timeout.connect(lambda: self.evaluate("tick"))
+        self._tick.timeout.connect(self._on_tick)
         self._tick.start()
-        monitors.monitorsChanged.connect(lambda _monitors: self.evaluate("displays"))
+        monitors.monitorsChanged.connect(self._on_displays)
         monitors.displayChanged.connect(self._on_display_changed)
         monitors.brightnessSet.connect(self._on_set)
         monitors.restoreDeferred.connect(self._on_deferred)
-        monitors.changedElsewhere.connect(lambda key, _value: self._overridden.add(key))  # like the user's own change
+        monitors.changedElsewhere.connect(self._on_changed_elsewhere)
+
+    def _on_timer(self) -> None:
+        self.evaluate("timer")
+
+    def _on_tick(self) -> None:
+        self.evaluate("tick")
+
+    def _on_displays(self, *_args) -> None:
+        self.evaluate("displays")
+
+    def _on_changed_elsewhere(self, key: str, _value: int) -> None:
+        self._overridden.add(key)  # like the user's own change
 
     @property
     def config(self) -> BrightnessScheduleConfig:

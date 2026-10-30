@@ -48,10 +48,16 @@ class PowerSourceKeeper(QObject):
         self._settle_until = 0.0
         self._target: int | None = None
         self._absorbed = False
-        monitors.observed.connect(lambda key, value: self._seen(key, value))
-        monitors.brightnessSet.connect(lambda key, value, _source: self._seen(key, value))
+        monitors.observed.connect(self._seen)
+        monitors.brightnessSet.connect(self._seen_set)
         monitors.changedElsewhere.connect(self._seen)
-        monitors.monitorsChanged.connect(lambda _monitors: self._levels.clear())
+        monitors.monitorsChanged.connect(self._forget_levels)
+
+    def _seen_set(self, key: str, value: int, _source: str) -> None:
+        self._seen(key, value)
+
+    def _forget_levels(self, *_args) -> None:
+        self._levels.clear()
 
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled

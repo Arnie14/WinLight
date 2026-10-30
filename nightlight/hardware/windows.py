@@ -52,6 +52,7 @@ from nightlight.core.colortemp import (
     ramps_match,
     whitepoint,
 )
+from nightlight.files import write_atomic
 from nightlight.hardware import win32
 from nightlight.hardware.brightness import (
     DisplayDetails,
@@ -65,8 +66,7 @@ from nightlight.hardware.brightness import (
 )
 from nightlight.hardware.calls import CallTimeout, start_side_call
 from nightlight.hardware.gamma import GammaBusy
-from nightlight.system.files import write_atomic
-from nightlight.system.safe_mode import SKIPPED_REASON, SKIPPED_SHORT, SafeMode
+from nightlight.hardware.safe_mode import SKIPPED_REASON, SKIPPED_SHORT, SafeMode
 
 log = logging.getLogger(__name__)
 
@@ -409,7 +409,7 @@ class _Wmi:
         The wmi package's wrappers sit in reference cycles; they are broken
         here rather than collected, since a collection on this thread would
         free other garbage too, Qt objects included (gc_guard.py)."""
-        from nightlight.system.gc_guard import release_cycles
+        from nightlight.gc_guard import release_cycles
 
         conn, self._conn = self._conn, None
         if conn is not None:

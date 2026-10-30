@@ -26,20 +26,21 @@ from nightlight.cli.commands import CommandHandler
 from nightlight.color.controller import NightLightController
 from nightlight.color.exemptions import ForegroundWatcher
 from nightlight.core.clock import zone_named
-from nightlight.core.schedule import OverrideKind, pausing_held
+from nightlight.core.schedule import pausing_held
 from nightlight.core.shortcuts import BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_UP, NIGHT_LIGHT, PANEL, SUSPEND, Shortcut
+from nightlight.files import write_atomic
 from nightlight.hardware import winsystem
 from nightlight.hardware.brightness import BrightnessBackend
 from nightlight.hardware.gamma import GammaBackend
+from nightlight.hardware.safe_mode import SafeMode
 from nightlight.support import compat, diagnostics
 from nightlight.system import autostart
-from nightlight.system.files import write_atomic
-from nightlight.system.safe_mode import SafeMode
 from nightlight.system.shortcuts import ShortcutService
+from nightlight.system.updates import UpdateChecker
 from nightlight.system.watcher import DisplayWatcher
 from nightlight.ui import reveal, theme
 from nightlight.ui.flyout import Flyout
-from nightlight.ui.night_light_text import is_night_light_on, night_light_status, toggle_suspended
+from nightlight.ui.night_light_text import night_light_status, toggle_night_light, toggle_suspended
 from nightlight.ui.settings_window import SettingsWindow
 from nightlight.ui.shortcut_overlay import ShortcutOverlay
 from nightlight.ui.tray import Tray
@@ -153,6 +154,7 @@ class NightLightApp:
             self.tray.flyoutRequested.connect(self._open_flyout)
             self.tray.configureRequested.connect(self.show_settings)
             self.tray.diagnosticsRequested.connect(self.report_problem)
+            self.tray.messageClicked.connect(self._on_tray_message_clicked)
             self.tray.quitRequested.connect(qapp.quit)
             self.tray.show()
             qapp.setQuitOnLastWindowClosed(False)
@@ -173,10 +175,16 @@ class NightLightApp:
         self._shortcut_overlay: ShortcutOverlay | None = None  # made the first time it shows
         self.shortcuts = ShortcutService(self.system_events, self._run_shortcut)
         self.shortcuts.set_shortcuts(self._config.shortcuts)
-        self.system_events.powerSourceChanged.connect(lambda _source: self.power_source.power_source_changed())
+        # Checking for updates: off unless turned on, and never part of start-up.
+        self._update_found = ("", "")  # a newer version a check found, and its release page
+        self._message_url = ""  # what clicking the tray's last notice opens ("" for a hint)
+        self.updates = UpdateChecker()
+        self.updates.found.connect(self._on_update_found)
+        self.updates.set_enabled(self._config.general.check_for_updates)
+        self.system_events.powerSourceChanged.connect(self._on_power_source_changed)
         self._watcher = DisplayWatcher(qapp, events=self.system_events,
                                        idle_seconds=winsystem.idle_seconds if sys.platform == "win32" else None)
-        self._watcher.displaysChanged.connect(lambda: self._on_displays_changed(RESCAN_AFTER_CHANGE_S))
+        self._watcher.displaysChanged.connect(self._on_displays_plugged)
         self._watcher.suspending.connect(self._on_suspending)
         self._watcher.resumed.connect(self._on_resumed)
         self._watcher.displaysOff.connect(self._on_suspending)
@@ -197,7 +205,7 @@ class NightLightApp:
         QTimer.singleShot(CLEANUP_DELAY_MS, diagnostics.remove_old_bundles)
 
         qapp.aboutToQuit.connect(self._shutdown)
-        self.monitors.monitorsChanged.connect(lambda _monitors: self._hint_calibration())
+        self.monitors.monitorsChanged.connect(self._hint_calibration)
         self.monitors.refresh()
         # Last, once everything the settings window uses (the shortcuts among it) exists.
         if self.tray is not None and not self._config.general.start_minimized and not self._busy("the settings at start"):
@@ -250,9 +258,16 @@ class NightLightApp:
                 **self._unlocking(),
                 shortcut_status=self.shortcuts.status,
                 pause_shortcuts=self.shortcuts.pause,
+                check_updates=self.updates.check_now,
             )
             self._settings.applied.connect(self._apply_settings)
             self.shortcuts.changed.connect(self._settings.refresh_shortcut_status)
+            self.updates.checked.connect(self._settings.show_update_status)
+            version, url = self._update_found
+            if url:
+                self._settings.show_update_status(f"{version} is available", url)
+            elif self.updates.last:
+                self._settings.show_update_status(self.updates.last)
         self._settings.set_windows_night_light(self._windows_night_light)
         if self.tray:
             self.flyout.hide()
@@ -343,9 +358,35 @@ class NightLightApp:
             skipped=lambda: set(self._safe_mode.skipped),
             last_wake=lambda: list(self.wake_report.lines),
             compatibility=self.compatibility_report,
+            shortcuts=self.shortcuts.report,
         )
 
-    def _hint_calibration(self) -> None:
+    def _on_update_found(self, version: str, url: str) -> None:
+        """Say once per version that it's out; the notice opens its release page."""
+        self._update_found = (version, url)
+        if self._settings is not None:
+            self._settings.show_update_status(f"{version} is available", url)
+        hint = f"update {version}"
+        if self.tray is None or hint in self._hints:
+            return
+        self._hints.add(hint)
+        _save_hints(self._hints_path, self._hints)
+        self._message_url = url
+        self.tray.showMessage(f"{APP_NAME} {version} is available",
+                              "Click to open its page on GitHub, to download it from there.",
+                              QSystemTrayIcon.MessageIcon.Information, HINT_MS)
+
+    def _on_tray_message_clicked(self) -> None:
+        if self._message_url:
+            QDesktopServices.openUrl(QUrl(self._message_url))
+
+    def _on_power_source_changed(self, _source: int) -> None:
+        self.power_source.power_source_changed()
+
+    def _on_displays_plugged(self) -> None:
+        self._on_displays_changed(RESCAN_AFTER_CHANGE_S)
+
+    def _hint_calibration(self, *_args) -> None:
         """Once ever, when a display with a color calibration is first seen:
         say that night light keeps it, and that Winlight can put it back
         when Windows drops it, if asked to (off by default)."""
@@ -363,6 +404,7 @@ class NightLightApp:
         self._hints.add(CALIBRATION_HINT)
         _save_hints(self._hints_path, self._hints)
         name = self.flyout.display_name_of(displays[0])
+        self._message_url = ""
         self.tray.showMessage(
             f"{APP_NAME}: a calibrated display",
             f"{name} has a color calibration, and night light keeps it. If Windows drops it (after the screen turns off, say), "
@@ -408,9 +450,8 @@ class NightLightApp:
         if action in (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET):
             self._shortcut_brightness(shortcut)
         elif action == NIGHT_LIGHT:
-            controller = self.controller
-            controller.set_override(OverrideKind.SUSPEND if is_night_light_on(controller) else OverrideKind.ACTIVATE, None)
-            self._show_shortcut_result(message=f"Night light: {night_light_status(controller)}")
+            toggle_night_light(self.controller)
+            self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
         elif action == SUSPEND:
             toggle_suspended(self.controller)
             self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
@@ -424,21 +465,25 @@ class NightLightApp:
         """Each display a step from the level last set (not a reading that may be
         stale, so held keys don't jump: Twinkle Tray #60), clamped on its own,
         so displays keep their difference (#716). The user's own change: it
-        stands until the schedule's next point."""
+        stands until the schedule's next point. A display left alone in HDR
+        (no automatic DDC/CI writes) changes only when the shortcut names it:
+        a shortcut for every display isn't that display's own control."""
         levels = []
         for monitor in self.monitors.monitors:
             state = self.monitors.state(monitor.key)
             if (not monitor.supported or state is None or not state.controllable or self._config.hidden(monitor.key)
-                    or (shortcut.display and monitor.key != shortcut.display)):
+                    or (shortcut.display and monitor.key != shortcut.display)
+                    or (not shortcut.display and self.monitors.hands_off(monitor.key))):
                 continue
             current = self.monitors.value(monitor.key)
             if shortcut.action == BRIGHTNESS_SET:
-                target = shortcut.value
+                target = max(monitor.minimum, min(100, shortcut.value))
             elif current is None:
                 continue
+            elif shortcut.action == BRIGHTNESS_UP:
+                target = max(current, min(100, current + shortcut.value))  # never lower, even from above 100
             else:
-                target = current + (shortcut.value if shortcut.action == BRIGHTNESS_UP else -shortcut.value)
-            target = max(monitor.minimum, min(100, target))
+                target = min(current, max(monitor.minimum, current - shortcut.value))  # never higher, even from below the minimum
             if target != current:
                 self.monitors.set_brightness(monitor.key, target)
             levels.append((self._config.display(monitor.key).name or monitor.name, target))
@@ -480,6 +525,8 @@ class NightLightApp:
         self.scheduler.set_config(new.brightness_schedule)
         if new.shortcuts != old.shortcuts:
             self.shortcuts.set_shortcuts(new.shortcuts)
+        if new.general.check_for_updates != old.general.check_for_updates:
+            self.updates.set_enabled(new.general.check_for_updates)
         if new.night_light != old.night_light:
             self.scheduler.evaluate("location")  # sunrise and sunset points follow the location
 

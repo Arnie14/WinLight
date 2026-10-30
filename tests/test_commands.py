@@ -157,7 +157,9 @@ def test_get_one_display_prints_just_the_number(handler):
 def test_night_light_commands(handler):
     commands, _, controller = handler
     assert commands.handle({"command": "night-light", "action": "on"})["data"]["night_light"]["override"] == "activate"
-    assert commands.handle({"command": "night-light", "action": "toggle"})["data"]["night_light"]["override"] == "suspend"
+    # Toggled back to what the schedule shows at noon (off): back to the schedule, no override left behind.
+    assert commands.handle({"command": "night-light", "action": "toggle"})["data"]["night_light"]["override"] is None
+    assert commands.handle({"command": "night-light", "action": "toggle"})["data"]["night_light"]["override"] == "activate"
     assert commands.handle({"command": "night-light", "action": "auto"})["data"]["night_light"]["override"] is None
     assert commands.handle({"command": "night-light", "action": "suspend"})["data"]["night_light"]["override"] == "suspend"
     assert controller.override.until is None  # until resumed

@@ -21,7 +21,9 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
-from nightlight.config import (
+from nightlight.core.clock import days_around, local, wall_time
+from nightlight.core.schedule import solar_events
+from nightlight.core.settings import (
     DEFAULT_SCHEDULE_POINTS,
     DEFAULT_SCHEDULE_TRANSITION,
     Anchor,
@@ -29,8 +31,6 @@ from nightlight.config import (
     SchedulePoint,
     parse_hhmm,
 )
-from nightlight.core.clock import days_around, local, wall_time
-from nightlight.core.schedule import solar_events
 
 log = logging.getLogger(__name__)
 

@@ -280,11 +280,15 @@ def test_while_recording_every_shortcut_is_let_go_and_taken_back_after():
 class FakeMonitors:
     """MonitorManager as shortcuts use it."""
 
-    def __init__(self, monitors, levels, controllable=None):
+    def __init__(self, monitors, levels, controllable=None, hands_off=()):
         self.monitors = monitors
         self.levels = dict(levels)
         self.controllable = controllable or {}
+        self.left_alone = set(hands_off)  # HDR displays with no automatic DDC/CI writes
         self.sent = []
+
+    def hands_off(self, key):
+        return key in self.left_alone
 
     def state(self, key):
         return types.SimpleNamespace(controllable=self.controllable.get(key, True))
@@ -303,12 +307,12 @@ TV = MonitorInfo(2, "Living room TV", True, key="SAM7136", minimum=20)
 OLD = MonitorInfo(3, "Old projector", False, key="EPS0000")
 
 
-def harness(levels, displays=(), controllable=None, monitors=(DELL, PANEL_MONITOR, TV, OLD)):
+def harness(levels, displays=(), controllable=None, monitors=(DELL, PANEL_MONITOR, TV, OLD), hands_off=()):
     from nightlight.app import NightLightApp
 
     shown = []
     app = types.SimpleNamespace(
-        monitors=FakeMonitors(list(monitors), levels, controllable), _config=AppConfig(displays=tuple(displays)),
+        monitors=FakeMonitors(list(monitors), levels, controllable, hands_off), _config=AppConfig(displays=tuple(displays)),
         _show_shortcut_result=lambda levels=None, message="": shown.append(levels or message))
     return (lambda shortcut: NightLightApp._shortcut_brightness(app, shortcut)), app.monitors, shown
 
@@ -391,7 +395,8 @@ def test_night_light_and_suspend_switch_and_say_so(app):
     assert app.controller.override.kind is OverrideKind.ACTIVATE  # it was off: on until changed back
     assert app._shortcut_overlay.isVisible() and app._shortcut_overlay._message.startswith("Night light:")
     app._run_shortcut(Shortcut("Ctrl+Alt+N", NIGHT_LIGHT))
-    assert app.controller.override.kind is OverrideKind.SUSPEND
+    assert app.controller.override is None  # switched back: the schedule again, not "suspended until resumed"
+    app._run_shortcut(Shortcut("Ctrl+Alt+S", SUSPEND))
     app._run_shortcut(Shortcut("Ctrl+Alt+S", SUSPEND))
     assert app.controller.override is None  # resumed
     app._run_shortcut(Shortcut("Ctrl+Alt+S", SUSPEND))

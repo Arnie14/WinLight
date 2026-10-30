@@ -70,7 +70,7 @@ In a new terminal (or use the full path `%LOCALAPPDATA%\Programs\Winlight\winlig
 - [ ] In light mode, the panel's percentages and captions are easy to read.
 - [ ] With night light on, run the installer again: Winlight closes itself, colors go back to normal, and your settings are kept after it starts again. Upgrading from 0.2.0 or earlier: the settings folder `%LOCALAPPDATA%\night-light` is renamed to `%LOCALAPPDATA%\WinLight`, with everything in it.
 - [ ] Settings → General → About → **View notices** opens the third-party notices.
-- [ ] Uninstall (Settings → Apps → Winlight): Winlight closes first and colors return to normal. It's gone from the Start menu, from Task Manager → Startup apps, and from PATH if you added it. Your settings in `%LOCALAPPDATA%\WinLight` stay.
+- [ ] Uninstall (Settings → Apps → Winlight): Winlight closes first and colors return to normal. It asks whether to delete your settings too: Yes (the default) deletes `%LOCALAPPDATA%\WinLight`, No keeps it for reinstalling. It's gone from the Start menu, from Task Manager → Startup apps, and from PATH if you added it.
 
 ## 7. Send it back
 

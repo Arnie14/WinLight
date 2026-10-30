@@ -41,7 +41,7 @@ Brightness tools for Windows usually manage monitor brightness, color tools mana
 4. **Turn off Windows Night Light** (Settings > System > Display > Night light) and other color tools: two night lights tint the screen twice. Winlight shows a notice when Windows Night Light is on.
 5. External monitors need **DDC/CI** turned on in their own on-screen menu. Most TVs have no DDC/CI; Winlight dims them through their colors instead.
 
-The installer's first page lists what else can clash with Winlight. Settings and logs are kept in `%LOCALAPPDATA%\WinLight`.
+The installer's first page lists what else can clash with Winlight. Settings and logs are kept in `%LOCALAPPDATA%\WinLight`. Winlight doesn't connect to the internet, unless you turn on **Check for updates** (Settings > General), which asks GitHub once a day whether a newer version is out.
 
 ## Reporting a problem
 

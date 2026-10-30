@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QMenu
 
 from nightlight.color.controller import NightLightController
 from nightlight.config import Mode
-from nightlight.core.schedule import OverrideKind, next_transition
+from nightlight.core.schedule import OverrideKind, compute_state, next_transition
 
 
 def is_night_light_on(controller: NightLightController) -> bool:
@@ -108,6 +108,19 @@ def is_suspended(controller: NightLightController) -> bool:
 def can_suspend(controller: NightLightController) -> bool:
     """Whether there is night light to suspend (or a suspension to end)."""
     return controller.config.enabled or controller.state.override is not None
+
+
+def toggle_night_light(controller: NightLightController) -> None:
+    """Night light on or off until switched back; switching back returns to
+    the schedule, rather than leaving an override that never ends (pressed
+    twice in the day, the evening would otherwise never come). The keyboard
+    shortcut and `--night-light toggle` both use this."""
+    want_on = not is_night_light_on(controller)
+    scheduled = compute_state(controller.config, controller.now(), None, controller.zone)
+    if want_on == (scheduled.night_factor > 0):
+        controller.clear_override()
+    else:
+        controller.set_override(OverrideKind.ACTIVATE if want_on else OverrideKind.SUSPEND, None)
 
 
 def toggle_suspended(controller: NightLightController) -> None:

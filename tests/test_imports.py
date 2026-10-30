@@ -71,3 +71,44 @@ def test_every_module_imports(name):
     if platform and not sys.platform.startswith(platform):
         pytest.skip(f"{name} only imports on {platform}")
     importlib.import_module(name)
+
+
+# Which of the app's own packages each layer may import, lowest first. core
+# is pure logic (no Qt, hardware or files); files and gc_guard are helpers
+# for every layer above core; app.py, the CLI and support tie it all together.
+LAYERS = {
+    "core": {"core"},
+    "files": set(),
+    "gc_guard": set(),
+    "config": {"core", "files"},
+    "hardware": {"core", "config", "files", "gc_guard", "hardware"},
+    "color": {"core", "config", "files", "hardware", "color"},
+    "brightness": {"core", "config", "files", "hardware", "brightness"},
+    "system": {"core", "config", "files", "gc_guard", "hardware", "system"},
+    "ui": {"core", "config", "files", "hardware", "color", "brightness", "system", "support", "ui"},
+    "support": {"core", "config", "files", "hardware", "color", "brightness", "system", "ui", "support"},
+    "cli": {"core", "config", "files", "hardware", "color", "brightness", "system", "ui", "support", "cli"},
+}
+
+
+def layer_of(name: str) -> str:
+    parts = name.split(".")
+    return parts[1] if len(parts) > 1 else "nightlight"
+
+
+@pytest.mark.parametrize("path", sorted(ROOT.joinpath("nightlight").rglob("*.py")), ids=lambda p: str(p.relative_to(ROOT)))
+def test_each_layer_imports_only_the_layers_below_it(path):
+    layer = layer_of(module_name(path))
+    if layer not in LAYERS:
+        return  # app.py and the package itself wire everything together
+    crossings = [(line, module) for line, module, _names in own_imports(path)
+                 if layer_of(module) != "nightlight" and layer_of(module) not in LAYERS[layer]]
+    assert not crossings, f"{layer} may import only {sorted(LAYERS[layer])}: {crossings}"
+
+
+@pytest.mark.parametrize("path", sorted(ROOT.joinpath("nightlight", "core").rglob("*.py")), ids=lambda p: p.name)
+def test_core_needs_no_qt_or_windows(path):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    roots = {alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    roots |= {node.module.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
+    assert not roots & {"PySide6", "ctypes", "wmi", "win32api", "pythoncom", "platformdirs"}, path.name

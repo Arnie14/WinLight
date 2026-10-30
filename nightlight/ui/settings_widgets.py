@@ -45,7 +45,7 @@ class AppList(QWidget):
         self._add.setMenu(self._menu)
         self._remove = QPushButton("Remove")
         self._remove.clicked.connect(self._remove_selected)
-        self.list.itemSelectionChanged.connect(lambda: self._remove.setEnabled(bool(self.list.selectedItems())))
+        self.list.itemSelectionChanged.connect(self._selection_changed)
         self._remove.setEnabled(False)
         buttons = QHBoxLayout()
         buttons.addWidget(self._add)
@@ -85,6 +85,9 @@ class AppList(QWidget):
         if path:
             self.add(path.replace("\\", "/").rsplit("/", 1)[-1])
 
+    def _selection_changed(self) -> None:
+        self._remove.setEnabled(bool(self.list.selectedItems()))
+
     def _remove_selected(self) -> None:
         for item in self.list.selectedItems():
             self.list.takeItem(self.list.row(item))
@@ -92,9 +95,16 @@ class AppList(QWidget):
 
 
 HDR_MANUAL_TIP = (
-    "While HDR is on, only this display's own slider changes its brightness over DDC/CI: restoring the remembered level, "
-    "the brightness schedule and following the laptop's keys leave it alone. Some monitors show a tint after DDC/CI "
-    "brightness changes in HDR mode. Displays controlled any other way aren't affected."
+    "While HDR is on, only this display's own slider (or a shortcut for this display) changes its brightness over DDC/CI: "
+    "restoring the remembered level, the brightness schedule, following the laptop's keys and shortcuts for every display "
+    "leave it alone. Some monitors show a tint after DDC/CI brightness changes in HDR mode. Displays controlled any other "
+    "way aren't affected."
+)
+HDR_MANUAL_NOTE = (
+    "“No automatic DDC/CI writes in HDR” is a technical setting for troubleshooting: turn it on only for an HDR "
+    "display that behaves oddly after brightness changes. While it's on and HDR is on, that display loses important "
+    "features: its remembered brightness isn't restored, and the brightness schedule, the laptop's keys and shortcuts for "
+    "every display leave it alone."
 )
 
 
@@ -114,6 +124,9 @@ class DisplayList(QWidget):
         self._rows: dict[str, tuple[QLineEdit, QCheckBox, QCheckBox]] = {}
         self._empty = SecondaryLabel("No displays detected yet.")
         self._grid.addWidget(self._empty, 0, 0)
+        self._hdr_note = SecondaryLabel(HDR_MANUAL_NOTE, scale=0.9)
+        self._hdr_note.setWordWrap(True)
+        self._hdr_note.hide()
 
     def prefs(self) -> tuple[DisplayPrefs, ...]:
         prefs = []
@@ -126,7 +139,7 @@ class DisplayList(QWidget):
         """Rows for the displays connected now, plus any with saved settings."""
         while self._grid.count():
             item = self._grid.takeAt(0)
-            if item.widget() is not self._empty:
+            if item.widget() not in (self._empty, self._hdr_note):
                 item.widget().deleteLater()
         self._rows = {}
         # Looked up as the app does, so names saved under a key from an older
@@ -160,4 +173,7 @@ class DisplayList(QWidget):
             self._grid.addWidget(show, row, 1)
             self._grid.addWidget(hdr_manual, row, 2)
             self._rows[key] = (name, show, hdr_manual)
+        if known:
+            self._grid.addWidget(self._hdr_note, len(known), 0, 1, 3)
+        self._hdr_note.setVisible(bool(known))
         self.changed.emit()

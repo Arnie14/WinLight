@@ -156,6 +156,7 @@ class SettingsWindow(QWidget):
         warmer_unlocked: Callable[[], bool] = lambda: False,
         shortcut_status: Callable[[str], str] | None = None,
         pause_shortcuts: Callable[[bool], None] | None = None,
+        check_updates: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
@@ -169,6 +170,7 @@ class SettingsWindow(QWidget):
         self._report = report
         self._running_apps = running_apps
         self._report_problem = report_problem
+        self._check_updates = check_updates  # UpdateChecker.check_now
         self._reload_calibrations = reload_calibrations
         self._unlock_warmer = unlock_warmer  # sets GdiIcmGammaRange: "done", "cancelled" or "failed"
         # Shortcuts: Windows' answer for each (ShortcutService.status), and letting
@@ -215,9 +217,10 @@ class SettingsWindow(QWidget):
 
         Button = QDialogButtonBox.StandardButton
         self.buttons = ActionBar()
-        # Display names are the user's own, not settings with defaults: keep them.
-        self.buttons.button(Button.RestoreDefaults).clicked.connect(lambda: self._load(replace(AppConfig(), displays=self.displays.prefs())))
-        self.buttons.button(Button.Reset).clicked.connect(lambda: self._load(self._saved))
+        # Bound methods, not lambdas holding self: a lambda on a child's signal
+        # makes a cycle that PySide deletes twice when it's collected.
+        self.buttons.button(Button.RestoreDefaults).clicked.connect(self._restore_defaults)
+        self.buttons.button(Button.Reset).clicked.connect(self._reset_to_saved)
         self.buttons.button(Button.Apply).clicked.connect(self._apply)
 
         content = QVBoxLayout()
@@ -274,6 +277,7 @@ class SettingsWindow(QWidget):
             self.software_dimming.toggled,
             self.schedule.changed,
             self.respect_fullscreen.toggled,
+            self.check_for_updates.toggled,
             self.follow_laptop.toggled,
             self.keep_on_power_change.toggled,
             self.shortcut_editor.changed,
@@ -303,10 +307,11 @@ class SettingsWindow(QWidget):
         if scheduler is not None:
             scheduler.changed.connect(self._update_schedule_status)
         if monitors is not None:
-            monitors.monitorsChanged.connect(lambda _monitors: self._update_displays())
+            # Bound: a lambda here would keep every settings window alive as long as the monitors.
+            monitors.monitorsChanged.connect(self._displays_changed)
             monitors.monitorsChanged.connect(self._refresh_display_names)
             if hasattr(monitors, "displayChanged"):
-                monitors.displayChanged.connect(lambda _key: self._update_displays())
+                monitors.displayChanged.connect(self._displays_changed)
         for button in (self.copy_report, self.save_report):
             button.setEnabled(report is not None)
         self.refresh_displays.setEnabled(monitors is not None)
@@ -354,11 +359,11 @@ class SettingsWindow(QWidget):
         identity.addLayout(name, 1)
         layout.addLayout(identity)
         group = QButtonGroup(self)
+        group.idClicked.connect(self._stack.setCurrentIndex)  # each button's id is its page
         self._nav: list[NavButton] = []
         for index, (text, glyph) in enumerate(zip(PAGES, (icons.moon_glyph, icons.sun_glyph, icons.display_glyph, icons.keyboard_glyph, icons.gear_glyph))):
             button = NavButton(text, glyph)
-            button.clicked.connect(lambda _checked=False, i=index: self._stack.setCurrentIndex(i))
-            group.addButton(button)
+            group.addButton(button, index)
             layout.addWidget(button)
             self._nav.append(button)
         self._nav[0].setChecked(True)
@@ -451,6 +456,12 @@ class SettingsWindow(QWidget):
         self.start_with_windows = ToggleSwitch(f"Start {APP_NAME} when I sign in")
         self.start_minimized = ToggleSwitch("Start minimized in the system tray")
         self.respect_fullscreen = ToggleSwitch("Never open over fullscreen games, videos or presentations")
+        self.check_for_updates = ToggleSwitch("Check for updates")
+        self.check_now = QPushButton("Check now")
+        self.check_now.clicked.connect(self._check_updates_now)
+        self.update_status = SecondaryLabel("")
+        self.update_status.setOpenExternalLinks(True)
+        self.update_status.setWordWrap(True)
         self.theme = QComboBox()
         for key, label in THEME_CHOICES.items():
             self.theme.addItem(label, key)
@@ -675,6 +686,18 @@ class SettingsWindow(QWidget):
         focus.add(SettingRow("Never open over fullscreen apps", f"{APP_NAME} won't open windows by itself while a game, "
                              "video or presentation is fullscreen", self.respect_fullscreen))
         layout.addWidget(focus)
+        layout.addWidget(SectionLabel("Updates"))
+        updates = Card()
+        note = SecondaryLabel(f"This is the only time {APP_NAME} connects to the internet. Leave it off if you prefer that, "
+                              f"for extra security. While {APP_NAME} is in beta, turning it on is recommended: new versions "
+                              "bring fixes and features often.", scale=0.9)
+        note.setWordWrap(True)
+        updates.add(SettingRow("Check for updates", f"Once a day, asks GitHub whether a newer {APP_NAME} is out and tells "
+                               "you. It downloads and installs nothing", self.check_for_updates, below=note))
+        if self._check_updates is not None:
+            updates.add(SettingRow("Check now", "Asks once, whether or not the daily check is on", self.check_now,
+                                   below=self.update_status))
+        layout.addWidget(updates)
         layout.addWidget(SectionLabel("About"))
         about = Card()
         about.add(SettingRow(f"{APP_NAME} {display_version()}", "Brightness and night light for every display. "
@@ -733,6 +756,7 @@ class SettingsWindow(QWidget):
             link_brightness=self.link_brightness.isChecked(),
             software_dimming=self.software_dimming.isChecked(),
             respect_fullscreen=self.respect_fullscreen.isChecked(),
+            check_for_updates=self.check_for_updates.isChecked(),
             follow_laptop_brightness=self.follow_laptop.isChecked(),
             keep_brightness_on_power_change=self.keep_on_power_change.isChecked(),
             idle_dim=self.idle_dim.isChecked(),
@@ -818,6 +842,7 @@ class SettingsWindow(QWidget):
         self.link_brightness.setChecked(general.link_brightness)
         self.software_dimming.setChecked(general.software_dimming)
         self.respect_fullscreen.setChecked(general.respect_fullscreen)
+        self.check_for_updates.setChecked(general.check_for_updates)
         self.follow_laptop.setChecked(general.follow_laptop_brightness)
         self.keep_on_power_change.setChecked(general.keep_brightness_on_power_change)
         self.idle_dim.setChecked(general.idle_dim)
@@ -1080,11 +1105,36 @@ class SettingsWindow(QWidget):
     def _connect_preview(self, slider: TemperatureSlider) -> None:
         """While a temperature slider is held, show that temperature on screen,
         with a note in the middle of the screen saying so, as KDE does."""
-        inner = slider.slider
-        inner.sliderPressed.connect(self._stop_day_preview)
-        inner.sliderPressed.connect(lambda: self._preview(slider.value()))
-        inner.sliderMoved.connect(lambda _: self._preview(slider.value()))
-        inner.sliderReleased.connect(lambda: self._preview(None))
+        slider.held.connect(self._hold_preview)
+        slider.released.connect(self._end_preview)
+
+    def _check_updates_now(self) -> None:
+        if self._check_updates is not None:
+            self._check_updates()
+
+    def show_update_status(self, text: str, url: str = "") -> None:
+        """How the last check went; a newer version links to its release page."""
+        if url:
+            self.update_status.setText(f'<a href="{url}">{text}</a>: opens its page on GitHub, to download it from there')
+        else:
+            self.update_status.setText(text)
+
+    def _hold_preview(self, kelvin: int) -> None:
+        self._stop_day_preview()  # the 24-hour preview gives way to the slider held
+        self._preview(kelvin)
+
+    def _end_preview(self) -> None:
+        self._preview(None)
+
+    def _restore_defaults(self) -> None:
+        # Display names are the user's own, not settings with defaults: keep them.
+        self._load(replace(AppConfig(), displays=self.displays.prefs()))
+
+    def _reset_to_saved(self) -> None:
+        self._load(self._saved)
+
+    def _displays_changed(self, *_args) -> None:
+        self._update_displays()
 
     def _preview(self, kelvin: int | None, hint: str = "") -> None:
         self._controller.preview(kelvin)

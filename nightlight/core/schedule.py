@@ -20,9 +20,9 @@ from astral import Observer
 from astral.sun import elevation
 from astral.sun import noon as solar_noon
 
-from nightlight.config import Mode, NightLightConfig, parse_hhmm
 from nightlight.core.clock import days_around, local, wall_time
 from nightlight.core.colortemp import NEUTRAL_KELVIN
+from nightlight.core.settings import Mode, NightLightConfig, parse_hhmm
 
 log = logging.getLogger(__name__)
 

@@ -188,10 +188,13 @@ class WindowsNightLightNotice(QFrame):
         label.setWordWrap(True)
         self.button = QPushButton("Turn it off…" if compact else "Open Windows Settings")
         self.button.setToolTip("Opens Settings > System > Display > Night light")
-        self.button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.SETTINGS_URL)))
+        self.button.clicked.connect(self._open_settings)
         layout.addWidget(label, 1)
         layout.addWidget(self.button)
         self.hide()
+
+    def _open_settings(self) -> None:
+        QDesktopServices.openUrl(QUrl(self.SETTINGS_URL))
 
 
 class MonitorBrightness(QWidget):
@@ -337,6 +340,8 @@ class TemperatureSlider(QWidget):
     right, with quiet captions at its ends and the value after it."""
 
     valueChanged = Signal(int)
+    held = Signal(int)  # the temperature while the handle is held (pressed, then dragged), in kelvin
+    released = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -361,7 +366,13 @@ class TemperatureSlider(QWidget):
         row.addWidget(self._label)
 
         self.slider.valueChanged.connect(self._on_changed)
+        self.slider.sliderPressed.connect(self._on_held)
+        self.slider.sliderMoved.connect(self._on_held)
+        self.slider.sliderReleased.connect(self.released)
         self._on_changed(self.slider.value())
+
+    def _on_held(self, *_args) -> None:
+        self.held.emit(self.value())
 
     def value(self) -> int:
         return self.slider.value() * 100

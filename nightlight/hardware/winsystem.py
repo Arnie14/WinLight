@@ -296,6 +296,7 @@ def running_apps() -> list[str]:
 
 WM_ENDSESSION = 0x0016
 WM_HOTKEY = 0x0312  # a shortcut registered with RegisterHotKey; wParam is its id
+MAX_HOTKEY_ID = 0xBFFF  # an application's ids are 0 to 0xBFFF; Windows' own are negative
 ERROR_HOTKEY_ALREADY_REGISTERED = 1409  # another app (or this one) has the combination
 WM_TIMECHANGE = 0x001E
 WM_DISPLAYCHANGE = 0x007E
@@ -512,7 +513,10 @@ class SystemEvents(QObject):
             return  # a posted message seen a second time
         self._last_message = identity
         if msg.message == WM_HOTKEY:
-            self.hotkeyPressed.emit(int(msg.wParam))
+            # Ours are 1 to MAX_HOTKEY_ID. Anything else (Windows' -1 and -2,
+            # arriving as huge unsigned numbers) would overflow the signal's int.
+            if 0 < msg.wParam <= MAX_HOTKEY_ID:
+                self.hotkeyPressed.emit(int(msg.wParam))
             return
         setting = data = None
         if msg.message == WM_POWERBROADCAST and msg.wParam == PBT_POWERSETTINGCHANGE and msg.lParam:

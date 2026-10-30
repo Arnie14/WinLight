@@ -21,9 +21,11 @@ from nightlight.core.shortcuts import (
     WITH_VALUE,
     Chord,
     Shortcut,
+    caution,
+    parse,
     problem,
 )
-from nightlight.system.shortcuts import DUPLICATE
+from nightlight.system.shortcuts import DUPLICATE, WORKS
 from nightlight.ui.settings_parts import Card, SettingRow
 from nightlight.ui.widgets import SecondaryLabel
 
@@ -277,6 +279,8 @@ class ShortcutEditor(Card):
                 text = status_of(shortcut.keys) or NOT_APPLIED
             if shortcut is not None:
                 seen.add(shortcut.keys)
+                if text in (WORKS, NOT_APPLIED) and (warning := caution(parse(shortcut.keys))):
+                    text = f"{text}. {warning}"
             row.status.setText(text)
 
     def _add_new(self) -> None:

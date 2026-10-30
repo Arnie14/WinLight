@@ -41,6 +41,9 @@ CHARACTER_KEYS = frozenset([*string.ascii_uppercase, *string.digits, *(f"Num{n}"
                             "Semicolon", "Equals", "Comma", "Minus", "Period", "Slash", "Backquote",
                             "BracketLeft", "Backslash", "BracketRight", "Quote"])
 NEED_MODIFIER = CHARACTER_KEYS | {"Space", "Enter", "Tab", "Backspace", "Delete"}
+# Keys whose character depends on the keyboard layout (the keypad's don't):
+# with AltGr, which Windows sends as Ctrl+Alt, many layouts type one more.
+LAYOUT_KEYS = frozenset(key for key in CHARACTER_KEYS if not key.startswith("Num"))
 
 # What a shortcut can do. Steps and levels take a value (a percentage).
 BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET = "brightness_up", "brightness_down", "brightness_set"
@@ -93,6 +96,18 @@ def problem(chord: Chord) -> str:
         return "Add Ctrl, Alt or Win: on its own (or with Shift) this key is for typing"
     if chord.key == "F12" and not chord.modifiers:  # RegisterHotKey's documentation
         return "Windows keeps F12 on its own for debuggers: add Ctrl, Alt, Shift or Win"
+    if chord.key == "Space" and chord.modifiers == {"Alt"}:
+        return "Alt+Space opens every window's menu (and PowerToys Run): choose other keys"
+    return ""
+
+
+def caution(chord: Chord) -> str:
+    """A warning for a combination that works but may get in the way, or "".
+    Windows sends AltGr as Ctrl+Alt, so on German, French, Polish and many
+    other layouts Ctrl+Alt+E is AltGr+E, which types €: registered, it no
+    longer types."""
+    if chord.key in LAYOUT_KEYS and {"Ctrl", "Alt"} <= chord.modifiers and "Win" not in chord.modifiers:
+        return "On keyboards with AltGr this may stop a character being typed (AltGr is Ctrl+Alt)"
     return ""
 
 

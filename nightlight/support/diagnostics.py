@@ -67,6 +67,7 @@ class Sources:
     skipped: Callable[[], set[str]] = lambda: set()
     last_wake: Callable[[], list[str]] = list
     compatibility: Callable[[], str] | None = None  # the compatibility report (compat.py)
+    shortcuts: Callable[[], list[str]] = list  # each keyboard shortcut and how it stands
 
 
 def summary(sources: Sources) -> str:
@@ -106,6 +107,8 @@ def summary(sources: Sources) -> str:
         lines.append("  paused on: " + ", ".join(f"{d} (for {kind})" for d, kind in zip(controller.paused, kinds)))
     windows_night_light = winsystem.windows_night_light_on()
     lines.append(f"Windows Night Light: {'on' if windows_night_light else 'off' if windows_night_light is False else 'unknown'}")
+    if shortcuts := sources.shortcuts():
+        lines += ["", "Keyboard shortcuts:", *(f"  {line}" for line in shortcuts)]
     if skipped := sources.skipped():
         lines.append("Skipped after crashing or hanging: " + ", ".join(sorted(skipped)))
     if wake := sources.last_wake():

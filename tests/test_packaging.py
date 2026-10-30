@@ -57,6 +57,25 @@ def test_the_installer_app_id_never_changes():
     assert re.search(r"^AppId=(.+)$", script, re.M).group(1) == APP_ID
 
 
+def test_the_uninstaller_deletes_the_data_folder_the_app_uses_by_default():
+    """An uninstall is a full uninstall unless the user says No: it deletes
+    the folder the app keeps its settings in (and its name before 0.3.0),
+    only after everything else is removed, and only when asked or silent."""
+    from nightlight import config
+
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    for folder in (config.DATA_FOLDER, config.OLD_DATA_FOLDER):
+        assert f"DelTree(ExpandConstant('{{localappdata}}\\{folder}'), True, True, True)" in script
+    asked = script.split("function InitializeUninstall(): Boolean;")[1].split("end;\n\nprocedure")[0]
+    assert "DeleteSettings := True;" in asked and "if not UninstallSilent then" in asked and "MB_YESNO) = IDYES" in asked
+    post = script.split("if CurUninstallStep = usPostUninstall then")[1]
+    assert post.index("if DeleteSettings then") < post.index("DelTree(")
+    assert script.count("DelTree(") == 2
+    # Inno's preprocessor takes a line starting with # as a directive (#13#10 broke the build once).
+    directives = {line.split()[0] for line in script.splitlines() if line.lstrip().startswith("#")}
+    assert directives <= {"#ifndef", "#error", "#endif"}, directives
+
+
 def test_checksums_are_written_as_sha256sum_reads_them(tmp_path):
     import hashlib
 

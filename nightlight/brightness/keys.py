@@ -44,7 +44,10 @@ class BrightnessKeys(QObject):
         self._poll = QTimer(self, interval=POLL_MS)
         self._poll.timeout.connect(self._read_panel)
         monitors.observed.connect(self._on_observed)
-        monitors.monitorsChanged.connect(lambda _: setattr(self, "_known", None))
+        monitors.monitorsChanged.connect(self._forget_known)
+
+    def _forget_known(self, *_args) -> None:
+        self._known = None
 
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
