@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from PySide6.QtCore import QByteArray, Qt, QTime, QTimeZone
-from PySide6.QtWidgets import QDialogButtonBox
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLabel, QMessageBox
 
 from nightlight.color.controller import NightLightController
 from nightlight.config import Anchor, AppConfig, BrightnessScheduleConfig, GeneralConfig, Mode, NightLightConfig, SchedulePoint
@@ -123,9 +123,69 @@ def test_autostart_unavailable_is_disabled_and_off():
     controller.shutdown()
 
 
-def test_restore_defaults(window):
-    window.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).click()
+def test_restore_defaults_asks_first_naming_the_pages_it_changes(window):
+    restore = window.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults)
+    restore.click()
+    box = window._restore_box
+    assert "Night Light" in box.text() and box.isVisible()
+    box.button(QMessageBox.StandardButton.Cancel).click()  # changed their mind
+    assert window.current_config() == AppConfig(KYIV, GeneralConfig()) and window._restore_box is None
+    restore.click()
+    window._restore_confirm.click()
     assert window.current_config() == AppConfig()
+    assert not restore.isEnabled()  # nothing left to restore
+    assert apply_button(window).isEnabled()  # not saved until Apply
+
+
+def test_restore_defaults_sits_at_the_foot_of_the_navigation_with_the_version(window):
+    from nightlight import display_version
+
+    restore = window.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults)
+    pane = window._nav[0].parentWidget().parentWidget()
+    assert restore.parentWidget() is pane
+    assert any(label.text() == display_version() for label in pane.findChildren(QLabel))
+    assert restore.parentWidget() is not window.buttons
+
+
+def test_pages_with_unsaved_changes_get_a_dot_and_the_footer_says_so(window):
+    assert not any(button.is_marked() for button in window._nav) and window.buttons.unsaved.isHidden()
+    window.night_temperature.setValue(3000)
+    window.check_for_updates.setChecked(True)
+    assert [button.is_marked() for button in window._nav] == [True, False, False, False, True]
+    assert not window.buttons.unsaved.isHidden()
+    window.buttons.button(QDialogButtonBox.StandardButton.Reset).click()
+    assert not any(button.is_marked() for button in window._nav) and window.buttons.unsaved.isHidden()
+
+
+def test_every_general_setting_has_its_page():
+    """A new general setting needs its page in GENERAL_PAGES, or its unsaved
+    change would show no dot."""
+    import dataclasses
+
+    from nightlight.ui.settings_window import GENERAL_PAGES
+
+    assert {f.name for f in dataclasses.fields(GeneralConfig)} == set(GENERAL_PAGES)
+
+
+def test_what_night_light_does_now_is_said_under_the_day(window):
+    assert window.now_status.text().startswith("Now: ")
+    assert "K" in window.now_status.text()
+
+
+def test_the_command_line_card_says_whether_winlight_cli_is_ready(window, monkeypatch):
+    from nightlight.ui import settings_window as module
+
+    monkeypatch.setattr(module, "cli_location", lambda: (False, None))  # running from source, not on PATH
+    window._update_cli_status()
+    assert window.cli_status.text().startswith("Running from source") and window.copy_cli_path.isHidden()
+    monkeypatch.setattr(module, "cli_location", lambda: (False, module.Path(r"C:\Programs\Winlight\winlight-cli.exe")))
+    window._update_cli_status()
+    assert window.cli_status.text().startswith("Not on your PATH") and not window.copy_cli_path.isHidden()
+    window.copy_cli_path.click()
+    assert QApplication.clipboard().text() == r'"C:\Programs\Winlight\winlight-cli.exe"'
+    monkeypatch.setattr(module, "cli_location", lambda: (True, module.Path(r"C:\Programs\Winlight\winlight-cli.exe")))
+    window._update_cli_status()
+    assert window.cli_status.text().startswith("Ready")
 
 
 def test_brightness_options(window):

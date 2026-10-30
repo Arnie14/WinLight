@@ -27,7 +27,19 @@ from nightlight.color.controller import NightLightController
 from nightlight.color.exemptions import ForegroundWatcher
 from nightlight.core.clock import zone_named
 from nightlight.core.schedule import pausing_held
-from nightlight.core.shortcuts import BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_UP, NIGHT_LIGHT, PANEL, SUSPEND, Shortcut
+from nightlight.core.shortcuts import (
+    BRIGHTNESS_CYCLE,
+    BRIGHTNESS_DOWN,
+    BRIGHTNESS_SET,
+    BRIGHTNESS_UP,
+    NIGHT_LIGHT,
+    PANEL,
+    REFRESH,
+    SUSPEND,
+    Shortcut,
+    cycle_levels,
+    next_in_cycle,
+)
 from nightlight.files import write_atomic
 from nightlight.hardware import winsystem
 from nightlight.hardware.brightness import BrightnessBackend
@@ -455,8 +467,11 @@ class NightLightApp:
         """What a keyboard shortcut does, through the same paths as the panel
         and the command line."""
         action = shortcut.action
-        if action in (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET):
+        if action in (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_CYCLE):
             self._shortcut_brightness(shortcut)
+        elif action == REFRESH:
+            self.monitors.retry()  # as the panel's button and `winlight-cli --refresh`
+            self._show_shortcut_result(message="Detecting displays again")
         elif action == NIGHT_LIGHT:
             toggle_night_light(self.controller)
             self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
@@ -486,6 +501,8 @@ class NightLightApp:
             current = self.monitors.value(monitor.key)
             if shortcut.action == BRIGHTNESS_SET:
                 target = max(monitor.minimum, min(100, shortcut.value))
+            elif shortcut.action == BRIGHTNESS_CYCLE:
+                target = next_in_cycle(cycle_levels(shortcut.levels), current, monitor.minimum)
             elif current is None:
                 continue
             elif shortcut.action == BRIGHTNESS_UP:

@@ -45,11 +45,17 @@ NEED_MODIFIER = CHARACTER_KEYS | {"Space", "Enter", "Tab", "Backspace", "Delete"
 # with AltGr, which Windows sends as Ctrl+Alt, many layouts type one more.
 LAYOUT_KEYS = frozenset(key for key in CHARACTER_KEYS if not key.startswith("Num"))
 
-# What a shortcut can do. Steps and levels take a value (a percentage).
+# What a shortcut can do. Steps and levels take a value (a percentage); a
+# cycle takes a list of levels (Twinkle Tray #898); refreshing detects the
+# displays again, as the panel's button and `--refresh` do (#585).
 BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET = "brightness_up", "brightness_down", "brightness_set"
-NIGHT_LIGHT, SUSPEND, PANEL = "night_light", "suspend", "panel"
-ACTIONS = (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET, NIGHT_LIGHT, SUSPEND, PANEL)
+BRIGHTNESS_CYCLE = "brightness_cycle"
+NIGHT_LIGHT, SUSPEND, PANEL, REFRESH = "night_light", "suspend", "panel", "refresh_displays"
+ACTIONS = (BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET, BRIGHTNESS_CYCLE, NIGHT_LIGHT, SUSPEND, PANEL, REFRESH)
 WITH_VALUE = frozenset({BRIGHTNESS_UP, BRIGHTNESS_DOWN, BRIGHTNESS_SET})
+# The brightness actions, for every display or one.
+FOR_DISPLAYS = WITH_VALUE | {BRIGHTNESS_CYCLE}
+MAX_CYCLE_LEVELS = 10
 # Held down, these repeat (each repeat is another step); the rest fire once.
 REPEATING = frozenset({BRIGHTNESS_UP, BRIGHTNESS_DOWN})
 
@@ -111,6 +117,32 @@ def caution(chord: Chord) -> str:
     return ""
 
 
+def cycle_levels(text: str) -> tuple[int, ...]:
+    """"100, 50, 1" -> (100, 50, 1): whole numbers kept to 0-100, a level
+    repeated right after itself dropped, at most MAX_CYCLE_LEVELS. Anything
+    that isn't a number is left out."""
+    levels: list[int] = []
+    for part in text.replace(";", ",").replace(" ", ",").split(","):
+        part = part.strip().removesuffix("%")
+        if not part.isdigit():
+            continue
+        level = min(100, int(part))
+        if not levels or levels[-1] != level:
+            levels.append(level)
+    return tuple(levels[:MAX_CYCLE_LEVELS])
+
+
+def next_in_cycle(levels: tuple[int, ...], current: int | None, minimum: int = 0) -> int:
+    """The level after `current` in the cycle (wrapping round), or the first
+    when `current` isn't one of them: no state to keep or lose, and a level
+    set by hand starts the cycle afresh. Levels below a display's minimum
+    count as the minimum."""
+    usable = [max(minimum, level) for level in levels]
+    if current in usable:
+        return usable[(usable.index(current) + 1) % len(usable)]
+    return usable[0]
+
+
 @dataclass(frozen=True)
 class Shortcut:
     """A key combination and what it does. `display` is a display key, or ""
@@ -120,14 +152,23 @@ class Shortcut:
     action: str = BRIGHTNESS_UP
     value: int = 10
     display: str = ""
+    levels: str = ""  # a cycle's levels, "100, 50, 1"
 
     def normalized(self) -> Shortcut | None:
-        """The shortcut as saved, or None if it can't be one (dropped on load)."""
+        """The shortcut as saved, or None if it can't be one (dropped on load):
+        a cycle needs two levels or more."""
         try:
             chord = parse(self.keys)
         except ValueError:
             return None
         if problem(chord) or self.action not in ACTIONS:
             return None
+        levels = ""
+        if self.action == BRIGHTNESS_CYCLE:
+            found = cycle_levels(self.levels)
+            if len(set(found)) < 2:
+                return None
+            levels = ", ".join(map(str, found))
         low = 0 if self.action == BRIGHTNESS_SET else 1
-        return Shortcut(str(chord), self.action, max(low, min(100, int(self.value))), self.display)
+        display = self.display if self.action in FOR_DISPLAYS else ""
+        return Shortcut(str(chord), self.action, max(low, min(100, int(self.value))), display, levels)

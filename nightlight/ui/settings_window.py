@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -135,6 +136,39 @@ LIMIT_OUTCOMES = {
     "cancelled": "Nothing was changed: the administrator prompt was declined.",
     "failed": "It couldn't be changed; the log says why.",
 }
+# The page each general setting is on (the other sections have a page each):
+# a page with unsaved changes gets a dot in the navigation pane.
+GENERAL_PAGES = {
+    "remember_brightness": 1, "link_brightness": 1, "software_dimming": 1, "follow_laptop_brightness": 1, "idle_dim": 1,
+    "idle_minutes": 1, "idle_level": 1, "idle_exempt_apps": 1, "keep_brightness_on_power_change": 1,
+    "keep_calibration": 2,
+    "shortcut_overlay": 3,
+    "start_with_windows": 4, "start_minimized": 4, "respect_fullscreen": 4, "check_for_updates": 4, "theme": 4, "accent": 4,
+}
+COMMAND_REFERENCE_URL = f"{REPO_URL}/blob/main/docs/command-line.md"
+CLI_EXAMPLES = (
+    ("winlight-cli --list", "the displays, with their numbers and brightness"),
+    ("winlight-cli --set 40", "every display to 40%"),
+    ("winlight-cli --set +10 --display 1", "display 1 brighter by 10%"),
+    ("winlight-cli --night-light toggle", "night light on or off"),
+)
+
+
+def changed_pages(config: AppConfig, saved: AppConfig) -> set[int]:
+    """The pages (by index) whose settings differ from the saved ones."""
+    pages = set()
+    if config.night_light != saved.night_light:
+        pages.add(0)
+    if config.brightness_schedule != saved.brightness_schedule:
+        pages.add(1)
+    if config.displays != saved.displays:
+        pages.add(2)
+    if config.shortcuts != saved.shortcuts:
+        pages.add(3)
+    pages |= {page for name, page in GENERAL_PAGES.items() if getattr(config.general, name) != getattr(saved.general, name)}
+    return pages
+
+
 GAMMA_BUSY = "A change to the display colors is stuck, probably in the display driver. Try again in a moment."
 # When "never pause late at night" starts (config.NEVER_PAUSE_FROM).
 NEVER_PAUSE_CHOICES = {
@@ -192,6 +226,7 @@ class SettingsWindow(QWidget):
         self._pause_shortcuts = pause_shortcuts
         self._recording = False
         self._warmer_unlocked = warmer_unlocked
+        self._restore_box: QMessageBox | None = None  # asking whether to restore the defaults
         self._unlock_outcome = ""  # how the last Unlock or Lock again went
         self._locked_again = False  # locked again since Windows last applied the limit (at sign-in)
         self._preview_notice: PreviewNotice | None = None  # made when a slider is first held
@@ -351,9 +386,15 @@ class SettingsWindow(QWidget):
         return self._stack.currentIndex()
 
     def _navigation(self) -> QWidget:
+        """The pages, and at the foot (level with Reset and Apply) "Restore
+        defaults", which concerns every page, and the version."""
         pane = QWidget()
         pane.setFixedWidth(252)
-        layout = QVBoxLayout(pane)
+        outer = QVBoxLayout(pane)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        top = QWidget()
+        layout = QVBoxLayout(top)
         layout.setContentsMargins(14, 26, 10, 16)
         layout.setSpacing(3)
         identity = QHBoxLayout()
@@ -382,6 +423,19 @@ class SettingsWindow(QWidget):
             self._nav.append(button)
         self._nav[0].setChecked(True)
         layout.addStretch(1)
+        outer.addWidget(top, 1)
+        outer.addWidget(Separator())
+        foot = QHBoxLayout()
+        foot.setContentsMargins(22, 14, 16, 16)  # as the window's footer, so the two lines meet
+        foot.setSpacing(8)
+        restore = self.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults)
+        restore.setToolTip("Every page back to its default settings (asks first; nothing is saved until Apply)")
+        foot.addWidget(restore)
+        foot.addStretch(1)
+        version = SecondaryLabel(display_version(), scale=0.88)
+        version.setToolTip(f"{APP_NAME} {display_version()}")
+        foot.addWidget(version)
+        outer.addLayout(foot)
         return pane
 
     def _build_controls(self, can_autostart: bool) -> None:
@@ -509,6 +563,12 @@ class SettingsWindow(QWidget):
             lambda moment: compute_state(self._ribbon_config, moment, zone=self._controller.zone).temperature, self._controller.now,
             zone=lambda: self._controller.zone)
         layout.addWidget(self.day_ribbon)
+        # What night light is doing now, and its next changes, under the day.
+        self.now_status = SecondaryLabel(scale=0.92)
+        self.now_status.setContentsMargins(4, 6, 4, 0)
+        layout.addWidget(self.now_status)
+        self.schedule_info.setContentsMargins(4, 2, 4, 0)
+        layout.addWidget(self.schedule_info)
         layout.addSpacing(16)
         self._night_card = Card()
         self._field_rows: dict[QWidget, QWidget] = {}
@@ -538,8 +598,6 @@ class SettingsWindow(QWidget):
         self.unlock_warmer.clicked.connect(self._unlock_or_lock)
         self._unlock_row = self._temperature_card.add(SettingRow("Windows' color limit", HOW_UNLOCKING_WORKS, self.unlock_warmer))
         layout.addWidget(self._temperature_card)
-        self.schedule_info.setContentsMargins(4, 10, 4, 0)
-        layout.addWidget(self.schedule_info)
         layout.addWidget(SectionLabel("Sleep"))
         self._sleep_card = Card()
         self._sleep_card.add(SettingRow("Sleep-friendly night light", SLEEP_ADVICE))
@@ -673,7 +731,50 @@ class SettingsWindow(QWidget):
         hint.setWordWrap(True)
         hint.setContentsMargins(4, 8, 4, 0)
         layout.addWidget(hint)
+        layout.addWidget(SectionLabel("Command line"))
+        layout.addWidget(self._command_line_card())
         return page
+
+    def _command_line_card(self) -> Card:
+        """How to use winlight-cli: whether it's ready to type, its full path to
+        copy otherwise, a few examples, and the full reference. It only looks
+        (at PATH); nothing is changed here."""
+        card = Card()
+        reference = QPushButton("Command reference")
+        reference.setToolTip(COMMAND_REFERENCE_URL)
+        reference.clicked.connect(self._open_command_reference)
+        card.add(SettingRow("winlight-cli", f"Changes brightness and night light from scripts, AutoHotkey, Task Scheduler or "
+                            f"a Stream Deck, while {APP_NAME} runs", reference))
+        self.copy_cli_path = QPushButton("Copy path")
+        self.copy_cli_path.clicked.connect(self._copy_cli_path)
+        self._cli_row = card.add(SettingRow("Where it is", "", self.copy_cli_path))
+        self.cli_status = self._cli_row.description
+        self._update_cli_status()
+        examples = QLabel("<table cellspacing='0' cellpadding='3'>" + "".join(
+            f"<tr><td style='font-family: Cascadia Mono, Consolas, monospace'>{command}</td><td>&nbsp;&nbsp;{what}</td></tr>"
+            for command, what in CLI_EXAMPLES) + "</table>")
+        examples.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        card.add(SettingRow("Examples", "Select one to copy it", None, below=examples))
+        return card
+
+    def _update_cli_status(self) -> None:
+        found, path = cli_location()
+        if found:
+            self._cli_row.set_description("Ready: type winlight-cli in a terminal (it's on your PATH)")
+        elif path is not None:
+            self._cli_row.set_description("Not on your PATH: type its full path instead (Copy path), or reinstall with "
+                                    "“Add winlight-cli to PATH” ticked")
+        else:
+            self._cli_row.set_description("Running from source: the installed build comes with winlight-cli.exe")
+        self.copy_cli_path.setVisible(path is not None)
+        self._cli_path = path
+
+    def _open_command_reference(self) -> None:
+        QDesktopServices.openUrl(QUrl(COMMAND_REFERENCE_URL))
+
+    def _copy_cli_path(self) -> None:
+        if self._cli_path is not None:
+            QGuiApplication.clipboard().setText(f'"{self._cli_path}"')
 
     def refresh_shortcut_status(self) -> None:
         """Windows registered (or refused) the shortcuts: show it on each row."""
@@ -899,7 +1000,11 @@ class SettingsWindow(QWidget):
         Button = QDialogButtonBox.StandardButton
         self.buttons.button(Button.Apply).setEnabled(config != self._saved)
         self.buttons.button(Button.Reset).setEnabled(config != self._saved)
-        self.buttons.button(Button.RestoreDefaults).setEnabled(config != AppConfig())
+        self.buttons.button(Button.RestoreDefaults).setEnabled(config != self._defaults())
+        unsaved = changed_pages(config, self._saved)
+        for index, button in enumerate(self._nav):
+            button.set_marked(index in unsaved)
+        self.buttons.set_unsaved(bool(unsaved))
 
         # Like KDE: only show what matters for the chosen switching times.
         night_light = config.night_light
@@ -1117,6 +1222,7 @@ class SettingsWindow(QWidget):
         self._header_icon.setPixmap(icon.pixmap(HEADER_ICON, HEADER_ICON))
 
     def _update_status(self) -> None:
+        self.now_status.setText(f"Now: {night_light_status(self._controller)}")
         override = self._controller.override
         self._banner_holder.setVisible(override is not None)
         if override is not None:
@@ -1152,9 +1258,34 @@ class SettingsWindow(QWidget):
     def _end_preview(self) -> None:
         self._preview(None)
 
+    def _defaults(self) -> AppConfig:
+        # Display names are the user's own, not settings with defaults: kept.
+        return replace(AppConfig(), displays=self.displays.prefs())
+
     def _restore_defaults(self) -> None:
-        # Display names are the user's own, not settings with defaults: keep them.
-        self._load(replace(AppConfig(), displays=self.displays.prefs()))
+        """Asks first, saying which pages change. Nothing is saved until Apply
+        (Reset undoes it). The box is window-modal and opened, not exec()'d:
+        no nested event loop."""
+        pages = [PAGES[i] for i in sorted(changed_pages(self._defaults(), self.current_config()))]
+        if not pages:
+            return
+        named = pages[0] if len(pages) == 1 else ", ".join(pages[:-1]) + " and " + pages[-1]
+        box = QMessageBox(QMessageBox.Icon.Question, f"{APP_NAME}: Restore defaults",
+                          f"Put the default settings back on {named}?", parent=self)
+        box.setInformativeText("Nothing is saved until you click Apply, and Reset undoes it. Display names are kept.")
+        self._restore_confirm = box.addButton("Restore defaults", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setWindowModality(Qt.WindowModality.WindowModal)
+        box.finished.connect(self._restore_answered)
+        self._restore_box = box
+        box.open()
+
+    def _restore_answered(self, _result: int) -> None:
+        box, self._restore_box = self._restore_box, None
+        if box is not None and box.clickedButton() is self._restore_confirm:
+            self._load(self._defaults())
+        if box is not None:
+            box.deleteLater()
 
     def _reset_to_saved(self) -> None:
         self._load(self._saved)
@@ -1205,6 +1336,16 @@ class SettingsWindow(QWidget):
         self.day_ribbon.set_marker(None)
         self.preview_day.setText("Preview")
         self._preview(None)
+
+
+def cli_location() -> tuple[bool, Path | None]:
+    """(whether `winlight-cli` is found on PATH, the installed winlight-cli.exe
+    or None when running from source)."""
+    import shutil
+    import sys
+
+    path = Path(sys.executable).with_name("winlight-cli.exe") if getattr(sys, "frozen", False) else None
+    return shutil.which("winlight-cli") is not None, path if path is not None and path.exists() else None
 
 
 def _page(title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:

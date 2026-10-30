@@ -90,7 +90,7 @@ class ShortcutService(QObject):
             else:
                 state = self._status.get(shortcut.keys, "not registered")
             seen.add(shortcut.keys)
-            amount = f" {shortcut.value}%" if shortcut.action in WITH_VALUE else ""
+            amount = f" {shortcut.value}%" if shortcut.action in WITH_VALUE else f" {shortcut.levels}" if shortcut.levels else ""
             target = " (one display)" if shortcut.display else ""
             lines.append(f"{shortcut.keys}: {shortcut.action}{amount}{target}: {state}")
         return lines

@@ -11,17 +11,21 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QPushButton, QS
 
 from nightlight.core.shortcuts import (
     ACTIONS,
+    BRIGHTNESS_CYCLE,
     BRIGHTNESS_DOWN,
     BRIGHTNESS_SET,
     BRIGHTNESS_UP,
+    FOR_DISPLAYS,
     NIGHT_LIGHT,
     PANEL,
+    REFRESH,
     SUSPEND,
     VK_NAMES,
     WITH_VALUE,
     Chord,
     Shortcut,
     caution,
+    cycle_levels,
     parse,
     problem,
 )
@@ -33,14 +37,19 @@ ACTION_LABELS = {
     BRIGHTNESS_UP: "Brighter by",
     BRIGHTNESS_DOWN: "Dimmer by",
     BRIGHTNESS_SET: "Set brightness to",
+    BRIGHTNESS_CYCLE: "Cycle brightness through",
     NIGHT_LIGHT: "Turn night light on or off",
     SUSPEND: "Suspend or resume night light",
     PANEL: "Open the panel",
+    REFRESH: "Detect displays again",
 }
 ALL_DISPLAYS = ""
 MAX_ROWS = 32
 NOT_APPLIED = "Click Apply to use it"
 NO_KEYS = "Click the field and press the keys"
+NO_CYCLE = "Give two levels or more, such as 100, 50, 1"
+# One click for the shortcuts most people want (keys that type nothing on any layout).
+USUAL = (Shortcut("Ctrl+Alt+Up", BRIGHTNESS_UP, 10), Shortcut("Ctrl+Alt+Down", BRIGHTNESS_DOWN, 10))
 
 # Qt's keys, for where Windows' virtual-key code isn't given (tests, other platforms).
 _QT_KEYS = {
@@ -155,6 +164,10 @@ class ShortcutRow(QWidget):
         self.value = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix="%")
         self.value.setValue(shortcut.value)
         self.value.setFixedWidth(84)
+        self.levels = QLineEdit(shortcut.levels or "100, 50, 1", placeholderText="100, 50, 1")
+        self.levels.setToolTip("The levels to step through, in order; after the last comes the first again. "
+                               "A display at another level starts from the first")
+        self.levels.setFixedWidth(130)
         self.display = QComboBox()
         # The lists narrow with the window rather than pushing the row past it.
         for combo, letters in ((self.action, 16), (self.display, 12)):
@@ -180,6 +193,7 @@ class ShortcutRow(QWidget):
         action_line.setSpacing(8)
         action_line.addWidget(self.action, 3)
         action_line.addWidget(self.value)
+        action_line.addWidget(self.levels)
         action_line.addWidget(self.display, 2)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -191,6 +205,7 @@ class ShortcutRow(QWidget):
         self.keys.refused.connect(self.status.setText)
         self.action.currentIndexChanged.connect(self._on_changed)
         self.value.valueChanged.connect(self._on_changed)
+        self.levels.textChanged.connect(self._on_changed)
         self.display.currentIndexChanged.connect(self._on_changed)
         self._sync()
 
@@ -213,13 +228,19 @@ class ShortcutRow(QWidget):
             return None
         action = self.action.currentData()
         value = self.value.value() if action in WITH_VALUE else 10
-        display = self.display.currentData() if action in WITH_VALUE else ALL_DISPLAYS
-        return Shortcut(self.keys.text(), action, value, display).normalized()
+        display = self.display.currentData() if action in FOR_DISPLAYS else ALL_DISPLAYS
+        levels = self.levels.text() if action == BRIGHTNESS_CYCLE else ""
+        return Shortcut(self.keys.text(), action, value, display, levels).normalized()
+
+    def needs_levels(self) -> bool:
+        """A cycle without two levels yet: the hint to show instead of a status."""
+        return self.action.currentData() == BRIGHTNESS_CYCLE and len(set(cycle_levels(self.levels.text()))) < 2
 
     def _sync(self) -> None:
         action = self.action.currentData()
         self.value.setVisible(action in WITH_VALUE)
-        self.display.setVisible(action in WITH_VALUE)
+        self.levels.setVisible(action == BRIGHTNESS_CYCLE)
+        self.display.setVisible(action in FOR_DISPLAYS)
         self.value.setMinimum(0 if action == BRIGHTNESS_SET else 1)
 
     def _on_changed(self, *_args) -> None:
@@ -242,12 +263,22 @@ class ShortcutEditor(Card):
         self.rows: list[ShortcutRow] = []
         self.add_button = QPushButton("Add shortcut")
         self.add_button.clicked.connect(self._add_new)  # bound, as the rows' ✕
+        self.add_usual = QPushButton("Add the usual")
+        self.add_usual.setToolTip("Ctrl+Alt+Up for brighter and Ctrl+Alt+Down for dimmer, by 10% on every display")
+        self.add_usual.clicked.connect(self._add_the_usual)
+        buttons = QWidget()
+        buttons_layout = QHBoxLayout(buttons)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(8)
+        buttons_layout.addWidget(self.add_usual)
+        buttons_layout.addWidget(self.add_button)
         holder = QWidget()
         self._rows_layout = QVBoxLayout(holder)
         self._rows_layout.setContentsMargins(0, 2, 0, 0)
         self._rows_layout.setSpacing(16)
         self.add(SettingRow("Keyboard shortcuts", "Shortcuts work in any app. A shortcut changes the displays the way "
-                            "the panel does; hidden displays are left alone", self.add_button, below=holder))
+                            "the panel does; hidden displays are left alone", buttons, below=holder))
+        self.changed.connect(self._update_add_usual)
 
     def set_shortcuts(self, shortcuts: tuple[Shortcut, ...]) -> None:
         for row in self.rows:
@@ -269,7 +300,9 @@ class ShortcutEditor(Card):
         seen: set[str] = set()
         for row in self.rows:
             shortcut = row.shortcut()
-            if shortcut is None:
+            if row.keys.text() and row.needs_levels():
+                text = NO_CYCLE
+            elif shortcut is None:
                 text = NO_KEYS
             elif shortcut.keys in seen:
                 text = DUPLICATE  # only the first with these keys is registered
@@ -285,6 +318,19 @@ class ShortcutEditor(Card):
 
     def _add_new(self) -> None:
         self._add(Shortcut(), focus=True)
+
+    def _add_the_usual(self) -> None:
+        """Brighter and dimmer on Ctrl+Alt+Up and Down, unless those keys are
+        taken by a shortcut here already; applied with the rest."""
+        used = {row.keys.text() for row in self.rows}
+        for shortcut in USUAL:
+            if shortcut.keys not in used:
+                self._add(shortcut)
+
+    def _update_add_usual(self) -> None:
+        used = {row.keys.text() for row in self.rows}
+        self.add_usual.setVisible(any(s.keys not in used for s in USUAL))
+        self.add_usual.setEnabled(len(self.rows) + 2 <= MAX_ROWS)
 
     def _add(self, shortcut: Shortcut, focus: bool = False) -> None:
         if len(self.rows) >= MAX_ROWS:

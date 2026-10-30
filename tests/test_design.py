@@ -75,7 +75,8 @@ EVERY_SETTING = AppConfig(
     BrightnessScheduleConfig(enabled=True, preset="custom", transition_minutes=15, points=(
         SchedulePoint(80, anchor=Anchor.SUNRISE, offset_minutes=30), SchedulePoint(25, "22:10"))),
     displays=(DisplayPrefs("DEL41A2:7XKJ9F3", "Desk", True, True),),
-    shortcuts=(Shortcut("Ctrl+Alt+Up", "brightness_up", 5), Shortcut("Ctrl+Alt+N", "suspend")),
+    shortcuts=(Shortcut("Ctrl+Alt+Up", "brightness_up", 5), Shortcut("Ctrl+Alt+N", "suspend"),
+               Shortcut("Ctrl+Alt+Home", "brightness_cycle", display="DEL41A2:7XKJ9F3", levels="100, 40, 5")),
 )
 
 

@@ -2,6 +2,8 @@
 
 `winlight-cli.exe` sits next to `Winlight.exe` in the installed folder (`%LOCALAPPDATA%\Programs\Winlight`). The installer's "Add winlight-cli to PATH" option lets any terminal find it by name. It talks to the running app, so Winlight must be running.
 
+Settings > Shortcuts > Command line says whether `winlight-cli` is ready to type (on PATH), copies its full path if it isn't, and shows a few examples.
+
 ```powershell
 winlight-cli --list                      # displays, their numbers, ids and brightness
 winlight-cli --set 40                    # every display to 40% (hidden ones excepted)

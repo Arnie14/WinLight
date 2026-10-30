@@ -328,26 +328,34 @@ class ActionButton(QAbstractButton):
 
 
 class ActionBar(QWidget):
-    """The bottom of the settings window: "Restore defaults" on the left,
-    "Reset" and "Apply" on the right. Answers button(StandardButton) like the
-    QDialogButtonBox it replaces."""
+    """The bottom of the settings window: "Unsaved changes" while there are
+    some, "Reset" and "Apply". "Restore defaults" belongs to it too, but the
+    window puts it at the foot of the navigation pane, away from Apply.
+    Answers button(StandardButton) like the QDialogButtonBox it replaces."""
 
     def __init__(self) -> None:
         super().__init__()
         from PySide6.QtWidgets import QDialogButtonBox
+
+        from nightlight.ui.widgets import SecondaryLabel
 
         Button = QDialogButtonBox.StandardButton
         self.restore_defaults = ActionButton("Restore defaults", "subtle")
         self.reset = ActionButton("Reset", "standard")
         self.apply = ActionButton("Apply", "accent")
         self._buttons = {Button.RestoreDefaults: self.restore_defaults, Button.Reset: self.reset, Button.Apply: self.apply}
+        self.unsaved = SecondaryLabel("Unsaved changes, on the pages marked with a dot")
+        self.unsaved.setVisible(False)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        layout.addWidget(self.restore_defaults)
+        layout.addWidget(self.unsaved)
         layout.addStretch(1)
         layout.addWidget(self.reset)
         layout.addWidget(self.apply)
+
+    def set_unsaved(self, unsaved: bool) -> None:
+        self.unsaved.setVisible(unsaved)
 
     def button(self, which) -> ActionButton:
         return self._buttons[which]
@@ -370,6 +378,17 @@ class NavButton(QAbstractButton):
         # The outline shows for keyboard focus only, as in Windows 11: a click
         # gives focus too, and left a second highlight on that entry.
         self._keyboard_focus = False
+        self._marked = False  # unsaved changes on this page: a dot at the end
+
+    def set_marked(self, marked: bool) -> None:
+        if marked != self._marked:
+            self._marked = marked
+            self.setToolTip("Unsaved changes on this page" if marked else "")
+            self.setAccessibleDescription("Unsaved changes" if marked else "")
+            self.update()
+
+    def is_marked(self) -> bool:
+        return self._marked
 
     def sizeHint(self) -> QSize:
         return QSize(180, max(36, self.fontMetrics().height() + 18))
@@ -395,6 +414,10 @@ class NavButton(QAbstractButton):
         icon.paint(painter, int(rect.left() + 14), int(rect.center().y() - 9), 18, 18)
         painter.setPen(text)
         painter.drawText(rect.adjusted(44, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
+        if self._marked:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(accent(palette))
+            painter.drawEllipse(QRectF(rect.right() - 16, rect.center().y() - 3.5, 7, 7))
         if self.hasFocus() and self._keyboard_focus:
             painter.setPen(QPen(text, 1.2))
             painter.setBrush(Qt.BrushStyle.NoBrush)

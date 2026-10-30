@@ -78,7 +78,7 @@ __all__ = [
     "save",
 ]
 
-CONFIG_VERSION = 3  # raised whenever settings are added (2: shortcuts, 3: check_for_updates), for _keep_newer
+CONFIG_VERSION = 4  # raised whenever settings are added (2: shortcuts, 3: check_for_updates, 4: cycle shortcuts), for _keep_newer
 
 # The folder for settings, state and logs (%LOCALAPPDATA%\WinLight on
 # Windows). Versions before 0.3.0 used "night-light"; the first start of a
