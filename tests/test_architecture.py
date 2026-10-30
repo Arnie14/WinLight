@@ -353,6 +353,25 @@ def test_only_the_command_line_parts_print():
 # --- Errors ----------------------------------------------------------------------------------------
 
 
+# Asking a monitor for its capabilities string is slow (seconds) and, on some
+# monitors and drivers, hangs or returns garbage (Monitorian's and Twinkle
+# Tray's reports). Brightness is read and set through VCP 0x10 directly.
+CAPABILITIES_CALLS = ("GetCapabilitiesStringLength", "CapabilitiesRequestAndCapabilitiesReply", "GetMonitorCapabilities")
+
+
+def rule_no_capabilities_string(trees) -> list[str]:
+    return [f"{where(path, node)} {node.attr if isinstance(node, ast.Attribute) else node.value}"
+            for path, tree in trees.items() for node in ast.walk(tree)
+            if (isinstance(node, ast.Attribute) and node.attr in CAPABILITIES_CALLS)
+            or (isinstance(node, ast.Constant) and node.value in CAPABILITIES_CALLS)]
+
+
+def test_monitors_are_never_asked_for_their_capabilities_string():
+    """Only Windows' own high-level brightness API (GetMonitorBrightness), the
+    fallback for monitors that refuse VCP 0x10, reads it, inside Windows."""
+    assert not rule_no_capabilities_string(TREES)
+
+
 def rule_swallowed(trees) -> list[str]:
     wrong = []
     for path, tree in trees.items():
@@ -466,6 +485,7 @@ BAD = {
     rule_print: "print('hello')\n",
     rule_swallowed: "try:\n    pass\nexcept Exception:\n    pass\n",
     rule_frozen: "from dataclasses import dataclass\n@dataclass\nclass Settings:\n    x: int = 1\n",
+    rule_no_capabilities_string: "import ctypes\nd = ctypes.WinDLL('dxva2')\nd.CapabilitiesRequestAndCapabilitiesReply(1, None, 0)\n",
     rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
 }
 

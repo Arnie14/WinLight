@@ -6,7 +6,7 @@ import pytest
 # No windows are shown, so tests also run without a display (CI, SSH).
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from hypothesis import settings
+from hypothesis import Phase, settings
 from PySide6.QtWidgets import QApplication
 
 # Property-based tests (hypothesis) run the same cases every time, as the
@@ -14,7 +14,10 @@ from PySide6.QtWidgets import QApplication
 # example database (no .hypothesis folder). No deadline: a slow CI machine
 # isn't a failure.
 settings.register_profile("winlight", derandomize=True, database=None, deadline=None, print_blob=True)
-settings.load_profile("winlight")
+# test_mutations.py only needs to know a property fails, not its smallest case.
+settings.register_profile("mutation", settings.get_profile("winlight"),
+                          phases=[Phase.explicit, Phase.reuse, Phase.generate])
+settings.load_profile(os.environ.get("WINLIGHT_HYPOTHESIS_PROFILE", "winlight"))
 
 
 @pytest.fixture(scope="session", autouse=True)

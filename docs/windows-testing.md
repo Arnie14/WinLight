@@ -30,7 +30,7 @@ ruff check .
 python tools/hardware_checks.py
 ```
 
-- [ ] `pytest`: everything passes. On Windows the only skip is the import of the Linux-only KDE backend. A failure in `test_win32.py` or `test_winsystem.py` means a binding is wrong; send its output.
+- [ ] `pytest`: everything passes, in 10 to 15 minutes. On Windows the only skip is the import of the Linux-only KDE backend. A failure in `test_win32.py` or `test_winsystem.py` means a binding is wrong; send its output. `pytest -m concurrency` runs only the race tests, in seconds.
 - [ ] `ruff check .`: no findings.
 - [ ] `hardware_checks.py`: no FAIL lines. It tests the built-in panel if there is one, otherwise the first display, and puts colors and brightness back at the end. Send its whole output, including the INFO and SKIP lines.
 
@@ -43,7 +43,7 @@ python main.py --report
 
 `--probe` prints, and saves to the log folder as `probe.txt`, what each API says about every display. It changes nothing, except that each display is briefly tinted to find the warmest night light Windows allows, then restored. `--report` prints the compatibility report (also in Settings > Displays) and sends nothing to the displays.
 
-- [ ] "Windows capabilities and ctypes layouts" says `layout problems: none`.
+- [ ] "Windows capabilities and ctypes layouts" says `layout problems: none` (sizes and field offsets).
 - [ ] Each monitor appears under "Displays" with its real model name, connector, HDR state and an "EDID:" line. Two identical monitors have different identities if their EDID has a serial.
 - [ ] Each external monitor with DDC/CI on reads a brightness under "DDC/CI monitors" ("VCP 0x10 brightness: N of M").
 - [ ] A laptop panel appears under "Built-in panels (WMI)".
@@ -86,6 +86,7 @@ Per external monitor:
 - [ ] Sleep the PC with the monitor connected and wake it: the monitor isn't woken by Winlight on its own, and works again within about 30 s. **Note any monitor that stays black or needs unplugging.**
 - [ ] Note any flicker while dragging, or a monitor that changes in visible steps.
 - [ ] A slider saying "Not responding": note which display and what you were doing, and send the log. The other displays keep working.
+- [ ] A slider saying "The last change failed", or a display marked failing: note how often, and send the log. Lines such as "transient DDC/CI error 0xC0262583, retrying" (with `--debug`) show messages garbled on the cable and sent again; many of them suggest trying another cable or port.
 
 TVs and displays without DDC/CI:
 
@@ -126,7 +127,7 @@ Settings > Night Light, Schedule **Always on**:
 
 - [ ] Applying fades every display warm over about 2 s; dragging a temperature previews it live.
 - [ ] Drag the night temperature fully warm. If Windows refuses that, each display stops at the limit `--probe` found, the log has one warning about `GdiIcmGammaRange`, and the Night row names each limited display ("3300 K (Windows limit)"). Back within the limit, the note disappears.
-- [ ] Optional: set `GdiIcmGammaRange` (DWORD `256` under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM`), sign out and in: warmer temperatures now work.
+- [ ] Optional: **Unlock…** under the Night row, and accept the administrator prompt: "Windows' color limit" says unlocked, in effect after signing out, and `GdiIcmGammaRange` (DWORD `256` under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM`) is set. Sign out and in: warmer temperatures now work. **Lock again…** removes the value the same way. Declining the prompt changes nothing.
 - [ ] Quit from the tray menu: the displays return to normal colors. A calibrated display returns to its calibrated look, not a flat one.
 - [ ] At 4500 K or warmer, end Winlight from Task Manager, then start it again: the log says the display "still had the tint Winlight left when it last stopped unexpectedly", and quitting returns the screen to normal.
 - [ ] In a terminal, Ctrl+C or closing the window: "quitting cleanly", colors back to normal.
@@ -217,6 +218,7 @@ Settings > Brightness > **Change brightness by time of day**:
 
 - [ ] Tray > Report a Problem…: a zip in `%LOCALAPPDATA%\WinLight\Reports` with summary.txt, settings.json and the logs; the summary on the clipboard; Show File opens the folder with the zip selected; Open GitHub Issues opens the issue page.
 - [ ] Open `WinLight.log` and the zip: your Windows user name, computer name and email don't appear anywhere (look for `<user>`, `<computer>`, `<home>` instead), nor your city, coordinates, custom display names or listed apps.
+- [ ] The log has no line saying a gamma ramp call "hasn't returned". If it has one, the display driver held Winlight up: send the log, with what was happening (waking, a game starting, a driver update).
 - [ ] If a monitor ever freezes Winlight: end it in Task Manager and start it again. That display shows "Skipped: Winlight stopped while talking to this display last time"; ⟳ tries it again.
 
 ## 11. The installed app
@@ -224,7 +226,7 @@ Settings > Brightness > **Change brightness by time of day**:
 With a build from [Releases](https://github.com/Arnie14/WinLight/releases), or the Actions tab's `winlight-windows` artifact. Quit any copy run from source first.
 
 - [ ] Run `Winlight-<version>-setup.exe`. SmartScreen may warn; note whether it does. There is **no administrator prompt**; it installs to `%LOCALAPPDATA%\Programs\Winlight`. The first page explains the beta and what clashes.
-- [ ] The installer, the Start menu entry and `Winlight.exe` show the Winlight moon icon. `Winlight.exe` > Properties > Details: product name Winlight, a numeric file version (for example `0.3.0.2001`) and the product version (`0.3.0-beta.1`).
+- [ ] The installer, the Start menu entry and `Winlight.exe` show the Winlight moon icon. `Winlight.exe` > Properties > Details: product name Winlight, a numeric file version (for example `0.7.5.2001`) and the product version (`0.7.5-beta.1`).
 - [ ] "Launch Winlight" starts it: tray icon only, no console window. The taskbar button (with Settings open) shows Winlight's icon, not Python's.
 - [ ] Settings > Location: the city list is filled (the time zone table was bundled). The app looks like the source version.
 - [ ] The app folder has `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`; Settings > General > About > View notices opens the notices.

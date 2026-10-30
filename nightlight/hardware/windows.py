@@ -18,7 +18,9 @@ Reliability rules, learnt from Monitorian's and Twinkle Tray's bug reports:
   call returns (at most one stuck thread per display), and its handle is
   only destroyed once the call is done with it.
 - DDC/CI is used sparingly: one read of VCP 0x10 per monitor per detection,
-  never the capabilities string, never for laptop panels.
+  never for laptop panels. The capabilities string is never asked for
+  (test_architecture.py checks): only Windows' high-level brightness API,
+  the fallback for a monitor that refuses VCP 0x10, reads it itself.
 - A monitor that answered earlier but not now is "not answering yet", not
   "has no DDC/CI": after waking from sleep, monitors take a while (Monitorian
   issue #50), and telling the user to turn DDC/CI on would be wrong.
@@ -1026,6 +1028,81 @@ class _GammaDisplay:
         return min(self.dim, self.idle_dim)
 
 
+# Night light changes gamma ramps from the UI thread, with no time limit:
+# GDI's calls into the display driver take milliseconds. A driver that hangs
+# in one (during a GPU driver reset, say) would freeze the app. Rather than
+# move the calls off the UI thread for something not seen yet, every call is
+# watched: one still running after GAMMA_SLOW_S is logged while it runs, and
+# again when it returns, so a report would show it.
+GAMMA_SLOW_S = 5.0
+_WATCH_POLL_S = 1.0
+
+
+class _GammaCallWatch:
+    """Notices gamma ramp calls that don't return (see GAMMA_SLOW_S). One
+    daemon thread, started at the first call, checks once a second."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._calls: dict[int, list] = {}  # token -> [what, thread name, started, warned]
+        self._next = 0
+        self._thread: threading.Thread | None = None
+        self.slow = 0  # calls that took longer than GAMMA_SLOW_S
+
+    @contextmanager
+    def watching(self, what: str) -> Iterator[None]:
+        started = time.monotonic()
+        with self._lock:
+            self._next += 1
+            token = self._next
+            self._calls[token] = [what, threading.current_thread().name, started, False]
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="gamma-call-watch", daemon=True)
+                self._thread.start()
+        try:
+            yield
+        finally:
+            with self._lock:
+                warned = self._calls.pop(token)[3]
+            if warned:
+                log.warning("%s returned after %.1f s", what, time.monotonic() - started)
+
+    def _run(self) -> None:
+        tick = threading.Event()  # never set: waited on as a timer
+        while True:
+            tick.wait(_WATCH_POLL_S)
+            now = time.monotonic()
+            with self._lock:
+                late = [call for call in self._calls.values() if not call[3] and now - call[2] >= GAMMA_SLOW_S]
+                for call in late:
+                    call[3] = True
+                self.slow += len(late)
+            for what, thread, started, _warned in late:
+                log.warning("%s hasn't returned after %.0f s: the display driver isn't answering%s", what, now - started,
+                            "; Winlight's window won't respond until it does" if thread == "MainThread" else "")
+
+
+_gamma_watch = _GammaCallWatch()
+
+
+class _WatchedGammaApi:
+    """The display API with its gamma ramp calls watched (_GammaCallWatch)."""
+
+    def __init__(self, api: DisplayApi) -> None:
+        self._api = api
+
+    def __getattr__(self, name: str):
+        return getattr(self._api, name)
+
+    def get_gamma_ramp(self, gdi_name: str) -> win32.GammaRamp | None:
+        with _gamma_watch.watching(f"Reading the gamma ramp of {gdi_name}"):
+            return self._api.get_gamma_ramp(gdi_name)
+
+    def set_gamma_ramp(self, gdi_name: str, ramp: win32.GammaRamp) -> bool:
+        with _gamma_watch.watching(f"Setting the gamma ramp of {gdi_name}"):
+            return self._api.set_gamma_ramp(gdi_name, ramp)
+
+
 # How long a gamma change waits for another thread's; once a wait failed,
 # only this long until the lock is free again, so the UI doesn't stall at
 # every night light tick and check meanwhile.
@@ -1100,7 +1177,7 @@ class WindowsGammaBackend:
 
     def __init__(self, api: DisplayApi | None = None, journal: GammaJournal | None = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
-        self._api: DisplayApi = api or win32
+        self._api: DisplayApi = _WatchedGammaApi(api or win32)
         self._journal = journal or GammaJournal()
         self._clock = clock  # monotonic seconds; tests step it (tests/fake_windows.py)
         self._displays: dict[str, _GammaDisplay] = {}

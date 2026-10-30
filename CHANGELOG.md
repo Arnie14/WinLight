@@ -25,6 +25,19 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - A color profile whose calibration has an impossible gamma (infinite, or in the thousands) was read as a ramp black everywhere but at full white, and kept as the display's calibration: the screen went black under night light. Such a calibration is now refused as unreadable.
 - When Windows failed for a moment to describe the displays, an HDR display looked as if HDR had been turned off, and each display lost its identity until the next check. What was known about each display is now kept until Windows answers again.
 - At startup, Winlight checks each Windows structure it uses field by field, not only its size, and turns off only the feature concerned if one doesn't match.
+- After a crash during software dimming between 20% and 39%, with the crash journal lost too, the dimmed ramp was taken for the display's calibration and dimmed again at the next start. Winlight now recognises its own dimming by its shape and puts the display's own ramp back (checked on the test laptop).
+- A calibration whose curve dips a little near black (measurement noise in some profiles) wasn't kept under night light. A dip up to half a percent is accepted now; Windows takes such ramps as they are (checked on the test laptop).
+- A gamma ramp call that the display driver doesn't return from within 5 seconds is now logged while it runs, and again when it returns, so a report shows it if a driver ever holds Winlight up.
+
+### For developers
+
+- Tests run on Windows for every push and pull request (`.github/workflows/tests.yml`), not only for releases and `main`.
+- `tests/fake_windows.py`: a fake of every Windows display call the backends make, scriptable per call (return, raise, or stop at a gate until the test opens it), with a fake clock. `tests/test_concurrency.py` (`pytest -m concurrency`) stages races one interleaving at a time with it: several owners of one gamma ramp, a driver that doesn't return, another program changing the ramp between Winlight's change and its read-back, back-off on the fake clock with the real constants, displays unplugged mid-change. A rule keeps sleeps out of these tests; tests elsewhere that slept and hoped a thread had got somewhere now wait for events.
+- Property tests with hypothesis (a new dev dependency, run derandomized): gamma ramps, the calibration heuristics, ICC and vcgt parsing over generated and damaged files, Windows calibration numbers of any kind, the DDC/CI retry loop over any sequence of answers, and the SDR brightness packet over any value.
+- `tests/test_fault_injection.py`: any journal contents, a full disk, a truncated journal, and Windows' display query failing. `tests/test_ddc_retries.py`: DDC/CI retries end to end, through the real retry loop, backend and queue, and how failures add up in the manager.
+- `tests/test_mutations.py`: each of 13 safeguards is broken on purpose in a copy of the source, and its tests must fail. Breaking them by hand first found a guard no test noticed (one display's unexpected error stopping the others), now tested.
+- `tests/test_frontend_audit.py` asks Qt's accessibility layer what a screen reader says for every control. Field offsets of every native structure are checked, and a rule keeps the DDC/CI capabilities string from being asked for.
+- The gamma backend takes its clock as a parameter, as `MonitorService` does.
 
 ## 0.7.0 Beta 1 (2026-10-30)
 

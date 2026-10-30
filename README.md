@@ -17,9 +17,9 @@ Brightness is set over DDC/CI for external monitors, through WMI for laptop pane
 | | |
 |---|---|
 | **Night light** | From 6500 K to as warm as Windows allows, by custom times or sunset to sunrise at your city, with transitions that follow twilight or last as long as you choose |
-| **Pausing night light** | On the display that needs true colors only: for any fullscreen app, for apps you list, or automatically for video, calls, games and photo, video and design apps |
+| **Pausing night light** | On the display that needs true colors only: for any fullscreen app, for apps you pick by name, or automatically for video, calls, games and photo, video and design apps |
 | **Brightness** | A slider for every display, whatever its control, each remembered across restarts, sleep and reconnecting |
-| **Brightness schedule** | Its own schedule, separate from night light: six presets with gradual transitions, or your own times by clock, sunrise or sunset |
+| **Brightness schedule** | Its own schedule, separate from night light: six presets with gradual transitions, or your own times by clock, sunrise or sunset, with the day shown at a glance |
 | **Color calibration** | Kept under night light, put back when Windows drops it (the screen turning off and on), reloaded from the display's color profile, with each display's status: what a calibration loader is usually installed for |
 | **Dimming when idle** | After a set time without input, held while an app keeps the screen on, a game runs exclusive fullscreen, or an app you list is in front |
 | **Warmer night light** | Windows limits how warm apps can make the screen (often around 3300 K). Winlight shows that limit, unlocks it for you as dedicated tools do (with Windows' administrator prompt), and locks it again whenever you like |

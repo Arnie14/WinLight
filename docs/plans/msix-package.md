@@ -1,6 +1,6 @@
 # Plan: an MSIX package for the Microsoft Store
 
-A plan, not a feature: nothing here is built yet. It records what a Microsoft Store (MSIX) version of Winlight needs, what changes in the code, what can go wrong, and how to test it, so the work can start from it later. Written 2026-10-29, against 0.6.0 Beta 1.
+A plan, not a feature: nothing here is built yet. It records what a Microsoft Store (MSIX) version of Winlight needs, what changes in the code, what can go wrong, and how to test it, so the work can start from it later. Written 2026-10-29, against 0.6.0 Beta 1; checked again for 0.7.5 Beta 1 (2026-10-30), whose changes don't alter it. The app picker reads Start menu shortcuts through `WScript.Shell`, which works in a full-trust package; test it there (to verify). The version numbers below are examples: the package is planned for 0.8.0.
 
 ## How to use this plan
 

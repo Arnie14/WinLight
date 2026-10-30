@@ -16,6 +16,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from nightlight.core.colortemp import (
+    DIP_TOLERANCE,
     DRIVER_SAFE_PEAK,
     MAX_KELVIN,
     MIN_KELVIN,
@@ -29,6 +30,7 @@ from nightlight.core.colortemp import (
     ramps_match,
     whitepoint,
 )
+from nightlight.hardware import windows
 
 WORD = 65535
 kelvins = st.floats(min_value=MIN_KELVIN - 500, max_value=MAX_KELVIN + 500, allow_nan=False)
@@ -132,15 +134,54 @@ def test_a_rising_calibration_reaching_near_full_is_always_kept(base):
     assert plausible_base(base)
 
 
-@given(calibrations, st.integers(0, 2), st.integers(1, 254))
-def test_a_ramp_that_falls_anywhere_is_never_kept(base, channel, at):
+@given(calibrations, st.integers(0, 2), st.integers(1, 254), st.integers(DIP_TOLERANCE + 1, 20000))
+def test_a_ramp_that_falls_by_more_than_noise_is_never_kept(base, channel, at, fall):
     broken = [list(c) for c in base]
-    assume(broken[channel][at] > 0)
-    broken[channel][at + 1] = broken[channel][at] - 1
+    assume(broken[channel][at] >= fall)
+    broken[channel][at + 1] = broken[channel][at] - fall
     assert not plausible_base(broken)
+
+
+@given(calibrations, st.integers(0, 2), st.integers(1, 60), st.integers(1, DIP_TOLERANCE))
+def test_a_calibration_with_a_dip_of_measurement_noise_is_still_kept(base, channel, at, dip):
+    """Some profiles' curves dip a step near black (measurement noise).
+    Windows takes such a ramp as it is (checked on the test laptop), so the
+    calibration is kept rather than lost under night light."""
+    assume(all(c[-1] >= PLAUSIBLE_BASE_PEAK * WORD for c in base))
+    noisy = [list(c) for c in base]
+    assume(noisy[channel][at] >= dip and noisy[channel][at + 1] - noisy[channel][at] <= 600)
+    noisy[channel][at + 1] = noisy[channel][at] - dip
+    assert plausible_base(noisy)
+
+
+@given(st.floats(min_value=SOFTWARE_DIM_MIN, max_value=99.9, allow_nan=False), st.floats(min_value=MIN_KELVIN, max_value=MAX_KELVIN),
+       st.integers(0, windows.NUDGE_STEPS - 1))
+def test_winlights_own_dimming_left_over_is_never_kept_as_a_calibration(percent, kelvin, nudge):
+    """Software dimming from 20% to 39% curves the ramp, so it passed as a
+    calibration: after a crash with the journal lost, it was dimmed again.
+    Every ramp Winlight makes (dimmed, tinted, nudged) whose lowest peak is
+    below the plausible peak is recognised as its own."""
+    ramp = windows.nudged(gamma_ramp(whitepoint(kelvin), 256, dimmed_ramp(percent, 256)), nudge)
+    if min(c[-1] for c in ramp) < PLAUSIBLE_BASE_PEAK * WORD:
+        assert not plausible_base(ramp)
+
+
+def test_a_calibration_whose_channels_follow_one_curve_is_still_kept():
+    """Winlight's dimming has red at exactly 70% on a gentle curve; a real
+    warm calibration with one gamma for all channels doesn't."""
+    for gamma in (0.8, 1.1, 1.4, 2.0):
+        warm = [[round(65535 * peak * (i / 255) ** gamma) for i in range(256)] for peak in (1.0, 0.9, 0.78)]
+        assert plausible_base(warm), gamma
 
 
 @given(calibrations, st.integers(-256, 256))
 def test_a_ramp_read_back_within_the_drivers_rounding_matches(base, error):
     read_back = [[min(WORD, max(0, v + error)) for v in c] for c in base]
     assert ramps_match(base, read_back)
+
+
+def test_a_ramp_falling_in_steps_smaller_than_noise_is_still_never_kept():
+    """Each step falls by less than DIP_TOLERANCE, but it is an inverted ramp:
+    dips are measured from the highest value so far, not the step before."""
+    inverted = [[65535 - i * 257 for i in range(256)] for _ in range(3)]
+    assert not plausible_base(inverted)

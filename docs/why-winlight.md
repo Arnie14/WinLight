@@ -17,7 +17,7 @@ Winlight manages both, for several displays, from one panel:
 - **Night light** with its own schedule (custom times, or sunset to sunrise) and transitions.
 - **Brightness** for every display, whatever its control, with **its own schedule**, separate from night light's.
 - **Dimming when idle**, with exceptions for apps that need the screen on.
-- **Night light paused per display**, while the other displays keep it, in three independent ways: for any fullscreen app, for apps on a list, and automatically for video playback, calls, exclusive-fullscreen games and known photo, video and design apps.
+- **Night light paused per display**, while the other displays keep it, in three independent ways: for any fullscreen app, for apps you pick by name, and automatically for video playback, calls, exclusive-fullscreen games and known photo, video and design apps.
 - **Each display's calibration kept**: night light tints over it, Winlight puts it back when Windows drops it, reloads it from the display's color profile, and shows its status for every display.
 
 We haven't found another Windows app that combines these. If you only need one of them, a dedicated tool may serve you well, and the sections below say when.
@@ -35,6 +35,7 @@ We haven't found another Windows app that combines these. If you only need one o
 | Night light for games, video, calls and color work | Applies everywhere, all the time | Pauses on the display showing a fullscreen app, an app you choose, or automatically for video, calls, games and photo, video and design apps |
 | Dimming when idle | Power settings can dim the laptop panel before turning the screen off | Dims every display to a level you choose after a set time, except while an app keeps the screen on, a game runs exclusive fullscreen, or an app you list is in front |
 | Several displays | One setting for all | Each display is named, controlled and paused on its own |
+| Keyboard shortcuts | Laptop brightness keys, for the laptop panel | Shortcuts you choose for brighter, dimmer, a set level or a cycle of levels, for every display or one, and for night light, with the new levels shown on screen |
 | Scripting | No | `winlight-cli` for AutoHotkey, Task Scheduler, a Stream Deck or any script |
 
 Windows' own Night Light is built in, needs no installation and is well integrated with the system. If one schedule for every display is all you need, it serves well. Winlight is for when you want more control, or more displays under it.
@@ -79,16 +80,16 @@ What Winlight adds:
 - **Sleep-safe monitor handling:** nothing is sent to monitors while the PC sleeps or the screens are off, every monitor call has a time limit, a monitor that hangs is set aside without freezing the others, and one that crashed the app is skipped until you retry it.
 - **A brightness schedule that leaves your choices alone:** each point applies once, so a level you choose stands until the next point, and sleeping through a point neither repeats nor misses it.
 - **Dimming when you're away** that never brightens a screen, never sends DDC/CI to external monitors for it, and holds off while a video, a call or a listed app is in front.
+- **Keyboard shortcuts without a keyboard hook**, registered with Windows as LightBulb's are, so they never slow your typing, with a note of the new levels that never takes focus from the app in front.
 - **Private reports:** Report a Problem leaves out your name, computer name, location and listed apps, and deletes its file after a week.
 - **A native app**, built with Qt rather than a browser engine.
 
 A brightness tool may suit you better if you rely on:
 
-- brightness hotkeys (Twinkle Tray; Monitorian's add-on) or Twinkle Tray's on-screen overlay: planned for Winlight, not there yet;
 - contrast, input switching, volume or raw VCP codes (Twinkle Tray, Monitorian's add-on, PowerToys Power Display): deliberately left out of Winlight until they can be tested on many monitors, since a wrong DDC/CI write can switch a monitor's input or reset it;
 - saved profiles of monitor settings (PowerToys Power Display, which can also switch them with Windows' light and dark theme);
 - per-monitor brightness ranges (Twinkle Tray's "normalize", Monitorian's adjustable range);
-- a Microsoft Store install (Twinkle Tray, Monitorian) or a code-signed build.
+- a Microsoft Store install (Twinkle Tray, Monitorian) or a code-signed build: planned for Winlight 0.8.0.
 
 ## Switching to Winlight
 
@@ -113,6 +114,7 @@ A brightness tool may suit you better if you rely on:
 | Idle dimming | Brightness > When I'm away |
 | Renamed or hidden monitors | Displays > Names and visibility |
 | Linked sliders ("unison") | Brightness > Change all displays together |
+| Brightness or night light hotkeys | Shortcuts: your own, or Add the usual for Ctrl+Alt+Up and Down |
 
 4. **Scripts and shortcuts.** [command-line.md](command-line.md) lists the `winlight-cli` equivalents of Twinkle Tray's, Monitorian's and PowerToys Power Display's commands.
 5. **If something doesn't work,** right-click the tray icon and choose **Report a Problem…**, then [open an issue](https://github.com/Arnie14/WinLight/issues) with the summary and the file. External monitors need DDC/CI turned on in their own on-screen menu; most TVs don't support it, and Winlight dims them through their colors instead.

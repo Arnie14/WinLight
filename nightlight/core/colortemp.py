@@ -153,6 +153,11 @@ PLAUSIBLE_BASE_PEAK = 0.9
 # full output is kept. Measured: Winlight's tints deviate 0%, a D50-style
 # calibration about 3%.
 TINT_STRAIGHTNESS = 0.01
+# Some calibrations dip a step near black (measurement noise in the
+# profile). Windows takes such a ramp as it is (checked on the test laptop),
+# so a dip up to this much (half a percent of full output, about one 8-bit
+# step) doesn't stop a ramp being a calibration; a larger fall does.
+DIP_TOLERANCE = 328
 
 
 def achievable_kelvin(requested: int, warmest: int | None) -> int:
@@ -181,16 +186,18 @@ def plausible_base(ramp: list[list[int]]) -> bool:
     calibration, and discarding one loses it until Windows loads it again
     (usually at the next sign-in). So only a ramp shaped like a tint (every
     channel straight, at least one well below full) is rejected; anything
-    curved is kept. A ramp that isn't three rising channels is never a base.
+    curved is kept, except Winlight's own software dimming. A ramp that isn't
+    three rising channels is never a base; a dip of measurement noise
+    (DIP_TOLERANCE below the highest value before it) is allowed.
     """
     if len(ramp) != 3:
         return False
     for channel in ramp:
-        if not channel or any(b < a for a, b in itertools.pairwise(channel)):
+        if not channel or any(value < highest - DIP_TOLERANCE for value, highest in zip(channel, itertools.accumulate(channel, max))):
             return False
     if all(channel[-1] >= PLAUSIBLE_BASE_PEAK * 65535 for channel in ramp):
         return True
-    return not looks_like_tint(ramp)
+    return not looks_like_tint(ramp) and not looks_like_own_dimming(ramp)
 
 
 def looks_like_tint(ramp: list[list[int]]) -> bool:
@@ -202,6 +209,32 @@ def looks_like_tint(ramp: list[list[int]]) -> bool:
             return False
         peak = channel[-1]
         if max(abs(value - peak * i / steps) for i, value in enumerate(channel)) > TINT_STRAIGHTNESS * 65535:
+            return False
+    return True
+
+
+def looks_like_own_dimming(ramp: list[list[int]]) -> bool:
+    """Whether a ramp is Winlight's software dimming below DRIVER_SAFE_PEAK's
+    bend (dimmed_ramp from 20% to 39%), tinted or not: red peaking at the
+    driver-safe peak on a gentle power curve, the other channels a share of
+    red. Those curve, so they would otherwise pass as a calibration. (Dimming
+    over a calibration isn't recognised; the journal recognises it.)"""
+    red = ramp[0]
+    steps = len(red) - 1
+    if steps < 4 or len(ramp) != 3:
+        return False
+    peak, tolerance = DRIVER_SAFE_PEAK * 65535, TINT_STRAIGHTNESS * 65535
+    middle = steps // 2
+    if red[middle] <= 0 or abs(red[-1] - peak) > tolerance:
+        return False
+    exponent = math.log(red[middle] / peak) / math.log(middle / steps)
+    if not 0.98 <= exponent <= dimming_curve(SOFTWARE_DIM_MIN)[1] + 0.02:
+        return False
+    if any(abs(value - peak * (i / steps) ** exponent) > tolerance for i, value in enumerate(red)):
+        return False
+    for channel in ramp[1:]:
+        share = channel[-2] / red[-2] if red[-2] else 0.0
+        if share > 1 or any(abs(value - share * r) > tolerance for value, r in zip(channel, red)):
             return False
     return True
 

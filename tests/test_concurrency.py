@@ -14,6 +14,7 @@ same code from many threads; these say exactly which order was tried.
 
 import itertools
 import logging
+import threading
 
 import pytest
 
@@ -278,3 +279,53 @@ def test_an_unexpected_error_on_one_display_doesnt_stop_the_others():
     fake.always("set_gamma_ramp", RuntimeError("unforeseen"), display=D1)
     gamma.apply(4100)
     assert shows(fake, D2, expected(4100))
+
+
+# --- A gamma call that doesn't return is reported while it runs ------------------------------------
+
+
+class LogWaiter(logging.Handler):
+    """Lets a test wait for a log message instead of sleeping until it's likely there."""
+
+    def __init__(self, *texts):
+        super().__init__(logging.WARNING)
+        self.seen = {text: threading.Event() for text in texts}
+
+    def emit(self, record):
+        for text, event in self.seen.items():
+            if text in record.getMessage():
+                event.set()
+
+
+def test_a_gamma_call_the_driver_doesnt_return_from_is_logged_while_it_runs_and_when_it_returns(monkeypatch):
+    """Night light calls GDI on the UI thread with no time limit; if a driver
+    ever hangs there, the log says so (windows.GAMMA_SLOW_S)."""
+    monkeypatch.setattr(windows, "GAMMA_SLOW_S", 0.05)
+    monkeypatch.setattr(windows, "_WATCH_POLL_S", 0.01)
+    waiter = LogWaiter("hasn't returned", f"{D1} returned after")
+    logging.getLogger(windows.__name__).addHandler(waiter)
+    try:
+        fake, gamma = backend(D1)
+        hung = Gate("a driver that takes its time")
+        fake.script("set_gamma_ramp", hung, display=D1)
+        slow_before = windows._gamma_watch.slow
+        change = start_together(lambda: gamma.apply(3000), names=("UI thread",))
+        assert hung.entered()
+        assert waiter.seen["hasn't returned"].wait(10), "a hung gamma call wasn't reported"
+        assert not waiter.seen[f"{D1} returned after"].is_set()
+        hung.open()
+        change.join()
+        assert waiter.seen[f"{D1} returned after"].wait(10)
+        assert windows._gamma_watch.slow > slow_before
+    finally:
+        logging.getLogger(windows.__name__).removeHandler(waiter)
+    assert shows(fake, D1, expected(3000))
+
+
+def test_quick_gamma_calls_are_never_reported(monkeypatch, caplog):
+    fake, gamma = backend(D1, D2)
+    with caplog.at_level(logging.WARNING):
+        for kelvin in range(6000, 2900, -100):
+            gamma.apply(kelvin)
+            gamma.verify()
+    assert "hasn't returned" not in caplog.text and "returned after" not in caplog.text

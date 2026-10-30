@@ -62,15 +62,18 @@ pytest
 ruff check .
 ```
 
-- The suite runs the Windows backends against a fake of the Windows APIs, plus Windows-only tests of the real bindings: structure sizes, `QueryDisplayConfig`, EDID identity, gamma ramps, DDC/CI handles, power notifications in a real window, the named pipe's ownership check. On Windows, the only expected skip is the Linux-only KDE backend's import.
+- The suite runs the Windows backends against a fake of the Windows APIs, plus Windows-only tests of the real bindings: structure sizes and field offsets, `QueryDisplayConfig`, EDID identity, gamma ramps, DDC/CI handles, power notifications in a real window, the named pipe's ownership check. On Windows, the only expected skip is the Linux-only KDE backend's import.
 - `tests/test_imports.py` parses every import of the app's own modules, so a moved module or renamed name fails at once.
 - `tests/test_docs.py` lints the Markdown documents: headings, links and anchors that resolve, tables with matching columns, and the project's writing rules.
 - `tests/test_architecture.py` checks the design's rules in the source (declared Windows call types, no signals under a lock, named daemon threads, no sleeping or nested event loops on the main thread, owned timers, atomic writes, and more); a justified exception goes in its list with the reason. `tests/test_design.py` and `tests/test_concurrency_and_soak.py` check the design's promises with random cases from fixed seeds, so a failure repeats exactly.
 - `tests/test_concurrency.py` stages races one interleaving at a time: `tests/fake_windows.py` provides a fake clock, a scriptable fake of every Windows call the backends make, and gates that hold a thread inside a call until the test lets it go. `pytest -m concurrency` runs just these. They never sleep (`test_architecture.py` enforces it), so they don't depend on the machine's speed.
 - `tests/test_gamma_properties.py` and the end of `tests/test_icc.py` are property tests (hypothesis): each states what must hold for every input, and hypothesis searches for a counter-example, shrunk to the smallest one. They run the same cases every time (the profile in `conftest.py`).
 - `tests/test_frontend_audit.py` checks every control in Settings and the panel for a name a screen reader can say, and other rules for the windows.
+- `tests/test_fault_injection.py` breaks what the gamma backend relies on (its journal file, Windows' display query) and checks each fault costs at most that piece of information. `tests/test_ddc_retries.py` follows a garbled DDC/CI message through the real retry loop, backend and queue.
+- `tests/test_mutations.py` checks that the tests guarding the most important safeguards fail when a safeguard breaks: each case copies the source to a temporary folder, breaks one safeguard there (never in the working tree) and runs its tests. When a safeguard's code is rewritten, its case says so; write its break again for the new code. Tools such as mutmut need `fork()`, which Windows doesn't have.
+- The full suite takes 10 to 15 minutes on the test laptop. `pytest -m concurrency`, or a single file, is quicker while working.
 - `tests/conftest.py` fails a test that raises inside a Qt slot, makes Qt print a warning, leaves a non-daemon thread running, or raises in a thread or a finalizer; a test running past 300 s ends the run with every thread's stack (`WINLIGHT_TEST_WATCHDOG_S` changes it). `tests/test_suite_guards.py` checks each guard. A new setting must be added to `EVERY_SETTING` in `tests/test_design.py`.
-- Ruff's rules are in `pyproject.toml` under `[tool.ruff.lint]`. CI runs both, and reports each run's test counts in its summary.
+- Ruff's rules are in `pyproject.toml` under `[tool.ruff.lint]`, and the pytest markers under `[tool.pytest.ini_options]`. CI runs both on every push and pull request, and reports each run's test counts in its summary.
 
 ## Checks on real hardware
 
@@ -129,16 +132,18 @@ nightlight/
   color/                    controller (night light on the displays), exemptions (pausing per display)
   system/                   autostart, single_instance (one copy, and the command-line pipe), watcher (display
                             changes, sleep), shortcuts (registering and running them), updates (the optional
-                            update check)
+                            update check), apps (installed apps from the Start menu, for the app lists)
   support/                  diagnostics (Report a Problem), privacy (scrubbing), compat (compatibility report),
                             probe (--probe)
   cli/                      client (winlight-cli) and commands (what the app does for it)
-  ui/                       tray, flyout, settings window and its parts, schedule editor, the preview note,
-                            shortcut_editor and shortcut_overlay, theme, icons
+  ui/                       tray, flyout, settings window and its parts, schedule editor, day_ribbon (a day of
+                            night light or brightness), the preview note, shortcut_editor and shortcut_overlay,
+                            theme, icons
   data/                     time zone table for picking a location (from tools/make_timezones.py)
 packaging/                  PyInstaller spec, Inno Setup script, installer notes, licenses, build.py, icon
 tools/                      hardware_checks.py, third_party_notices.py, screenshots.py, make_timezones.py
-tests/                      pytest suite
+tests/                      pytest suite; fake_windows.py (a scriptable fake of the Windows display calls, a
+                            fake clock and gates, for the concurrency tests)
 docs/                       features, why-winlight, command-line, windows-notes, test plans, development;
                             history/ (earlier reports); plans/ (work not started yet: msix-package); screenshots/
 .github/workflows/          release.yml: lint, test, build and publish; tests.yml: lint and test other pushes and pull requests
