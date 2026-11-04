@@ -195,6 +195,7 @@ class MonitorService:
         self._detected_at: float | None = None
         self._gone_at: float | None = None
         self._detection_stuck = False
+        self._detection_returned = False  # the last abandoned detection has since returned; guarded by _cond
         self._detect_failures = 0  # in a row
         self._hung: dict[str, str] = {}  # key -> the call stuck in it; guarded by _cond
         self.busy: str | None = None  # the call in progress, for the log and shutdown
@@ -362,11 +363,12 @@ class MonitorService:
             return max(0.01, self._detect_interval() - (self._clock() - self._detected_at))
         return None
 
-    def _call(self, fn, timeout: float, what: str, key: str | None = None):
+    def _call(self, fn, timeout: float, what: str, key: str | None = None, on_late: Callable[[], None] | None = None):
         """A backend call with a time limit. On timeout, `key`'s display is
-        left alone until the call returns."""
+        left alone until the call returns (or `on_late` runs then instead)."""
         self.busy = what
-        on_late = (lambda: self._call_returned(key)) if key else None
+        if on_late is None and key:
+            on_late = lambda: self._call_returned(key)  # noqa: E731
         started = time.perf_counter()
         try:
             result = self._runner.call(fn, timeout, what, on_late=on_late)
@@ -425,14 +427,18 @@ class MonitorService:
 
     def _do_detect(self, _payload) -> None:
         self._emit(DetectionStarted())
+        with self._cond:
+            self._detection_returned = False
         try:
-            monitors = self._call(self._backend.list_monitors, DETECT_TIMEOUT_S, "detecting displays")
+            monitors = self._call(self._backend.list_monitors, DETECT_TIMEOUT_S, "detecting displays", on_late=self._late_detection)
         except CallTimeout as exc:
             # The backend may still be rebuilding its list on the abandoned
-            # thread, so no index can be trusted until it returns.
-            self._detection_stuck = True
+            # thread, so no index can be trusted until it returns, when it
+            # asks for a fresh detection (_late_detection). Under the lock:
+            # it may have returned already, just after being given up on.
+            with self._cond:
+                self._detection_stuck = not self._detection_returned
             self._by_key = {}
-            self._runner_late_detection()
             self._emit(DetectionStuck(exc.what))
             return
         except Exception as exc:
@@ -476,17 +482,15 @@ class MonitorService:
             self._reads = (self._reads or set()) | supported
             self._reads_after_detection = True
 
-    def _runner_late_detection(self) -> None:
-        """Detect again once the stuck detection returns."""
-        def watch() -> None:
-            while self._runner.stuck and not self._closing:
-                time.sleep(0.2)
-            with self._cond:
-                self._detection_stuck = False
-                self._detect = self._detect_forced = True
-                self._cond.notify()
-
-        threading.Thread(target=watch, name="watch stuck detection", daemon=True).start()
+    def _late_detection(self) -> None:
+        """The detection that was given up on returned (on its own thread):
+        detect again. Only that call counts: another display's call may stay
+        stuck for good, and must not keep detection waiting with it."""
+        with self._cond:
+            self._detection_returned = True
+            self._detection_stuck = False
+            self._detect = self._detect_forced = True
+            self._cond.notify()
 
     def _target(self, write: Write) -> MonitorInfo | None:
         """The display a write is for, in this generation; None (and why) if it can't take it."""

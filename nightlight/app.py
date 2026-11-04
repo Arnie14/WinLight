@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import replace
@@ -665,20 +666,27 @@ class NightLightApp:
         if self._shut_down:
             return  # quitting after signing out started it already
         self._shut_down = True
-        self._night_light_check.stop()
-        self._zone_check.stop()
-        self._cleanup.stop()
-        self._watcher.stop()  # signing out keeps the event loop running: no late display events
-        self.brightness_keys.set_enabled(False)
-        self._exemptions.stop()
-        self.idle_dimmer.release()  # quitting while dimmed: levels back first (queued before the monitor thread stops)
-        self.scheduler.shutdown()
-        self.controller.shutdown()
-        self.brightness_memory.shutdown()
-        self.monitors.shutdown()
-        self.shortcuts.stop()
-        self.updates.set_enabled(False)  # signing out: no check while the session ends
-        self.system_events.close()
+        steps = (
+            ("stopping the timers", lambda: (self._night_light_check.stop(), self._zone_check.stop(), self._cleanup.stop())),
+            ("stopping the display watcher", self._watcher.stop),  # signing out keeps the event loop running: no late display events
+            ("stopping the laptop-key follower", lambda: self.brightness_keys.set_enabled(False)),
+            ("stopping pausing", self._exemptions.stop),
+            # Quitting while dimmed: levels back first (queued before the monitor thread stops).
+            ("undoing idle dimming", self.idle_dimmer.release),
+            ("stopping the brightness schedule", self.scheduler.shutdown),
+            ("giving the displays their colors back", self.controller.shutdown),
+            ("saving the brightness levels", self.brightness_memory.shutdown),
+            ("stopping the monitor thread", self.monitors.shutdown),
+            ("letting go of the shortcuts", self.shortcuts.stop),
+            ("stopping the update check", lambda: self.updates.set_enabled(False)),  # no check while the session ends
+            ("closing Windows' notifications", self.system_events.close),
+        )
+        # Each on its own: one that fails mustn't skip the rest, the colors above all.
+        for what, step in steps:
+            try:
+                step()
+            except Exception:
+                log.exception("Quitting: %s failed; carrying on", what)
 
 
 def _load_hints(path: Path) -> set[str]:
@@ -702,6 +710,9 @@ def _save_hints(path: Path, hints: set[str]) -> None:
 def _reveal(path: Path) -> None:
     """Show a file in Explorer (selected), or its folder elsewhere."""
     if sys.platform == "win32":
-        subprocess.Popen(["explorer", "/select,", str(path)])
+        # By its full path: by bare name, Windows looks in the app's folder and
+        # the current folder first, where anyone could have left an explorer.exe.
+        explorer = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "explorer.exe"
+        subprocess.Popen([str(explorer), "/select,", str(path)])
     else:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))

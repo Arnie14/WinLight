@@ -630,3 +630,44 @@ def test_the_power_plans_brightness_isnt_followed_while_it_is_put_back(start, mo
     night_light.system_events.powerSourceChanged.emit(1)
     night_light.system_events.panelBrightness.emit(40)  # Windows' battery level
     assert followed == [] and night_light.brightness_keys._held()
+
+
+@pytest.mark.parametrize("step", ["_watcher.stop", "brightness_keys.set_enabled", "_exemptions.stop", "idle_dimmer.release",
+                                  "scheduler.shutdown", "brightness_memory.shutdown", "shortcuts.stop", "updates.set_enabled"])
+def test_a_failing_step_of_quitting_never_stops_the_colors_coming_back(start, monkeypatch, step):
+    """Quitting is a list of steps. One that raised skipped the rest, the
+    night light's among them: the screen stayed tinted after quitting
+    (until the journal fixed it at the next start)."""
+    from nightlight.hardware.gamma import FakeGammaBackend
+
+    brightness, _gamma = create_backends("fake")
+    gamma = FakeGammaBackend()
+    night_light, _ = start(GeneralConfig(start_minimized=True), backends=(brightness, gamma))
+    gamma.apply(3500)
+    owner_name, method = step.rsplit(".", 1)
+    owner = getattr(night_light, owner_name)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError(f"{step} failed")
+
+    monkeypatch.setattr(owner, method, broken)
+    night_light._shutdown()
+    assert gamma.kelvin == 6500  # colors back
+    assert night_light.monitors._thread is None or not night_light.monitors._thread.is_alive()
+    assert not night_light.system_events.listening
+
+
+@pytest.mark.skipif(__import__("sys").platform != "win32", reason="Explorer is Windows'")
+def test_showing_a_file_runs_windows_own_explorer_by_its_full_path(monkeypatch, tmp_path):
+    """By bare name, Windows looks for explorer.exe in the app's folder and the
+    current folder first, where anyone could have left one; as reg.exe is
+    run, by its full path (win32.run_elevated's caller)."""
+    import os
+    from pathlib import Path
+
+    started = []
+    monkeypatch.setattr(app_module.subprocess, "Popen", lambda args, **kwargs: started.append(args))
+    app_module._reveal(tmp_path / "report.zip")
+    [args] = started
+    assert Path(args[0]) == Path(os.environ["SYSTEMROOT"]) / "explorer.exe"
+    assert args[1:] == ["/select,", str(tmp_path / "report.zip")]

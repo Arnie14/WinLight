@@ -336,6 +336,27 @@ def test_child_processes_never_hang_the_app():
     assert not rule_processes(TREES)
 
 
+def rule_bare_program_names(trees) -> list[str]:
+    """Programs started by a bare name (a string literal without a folder)."""
+    wrong = []
+    for attribute in ("Popen", "run", "call", "check_call", "check_output"):
+        for path, node in calls(trees, attribute=attribute):
+            if ast.unparse(node.func) != f"subprocess.{attribute}" or not node.args:
+                continue
+            command = node.args[0]
+            first = command.elts[0] if isinstance(command, ast.List) and command.elts else command
+            if isinstance(first, ast.Constant) and isinstance(first.value, str) and not any(c in first.value for c in "\\/:"):
+                wrong.append(f"{where(path, node)} starts {first.value!r} by its bare name")
+    return wrong
+
+
+def test_programs_are_started_by_their_full_path():
+    """By bare name, Windows looks for the program in the app's folder and the
+    current folder before System32, where anyone could have left one with
+    that name: reg.exe and explorer.exe are run by their full paths."""
+    assert not rule_bare_program_names(TREES)
+
+
 PRINT_ALLOWED = {"main.py", "nightlight/cli/client.py", "nightlight/support/probe.py"}
 
 
@@ -486,6 +507,7 @@ BAD = {
     rule_swallowed: "try:\n    pass\nexcept Exception:\n    pass\n",
     rule_frozen: "from dataclasses import dataclass\n@dataclass\nclass Settings:\n    x: int = 1\n",
     rule_no_capabilities_string: "import ctypes\nd = ctypes.WinDLL('dxva2')\nd.CapabilitiesRequestAndCapabilitiesReply(1, None, 0)\n",
+    rule_bare_program_names: "import subprocess\nsubprocess.Popen(['explorer', '/select,', 'x'])\n",
     rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
 }
 

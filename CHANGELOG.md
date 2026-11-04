@@ -8,6 +8,9 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 - Swapping two identical monitors between ports, or replacing one with another of the same model, while Winlight ran: each kept the other's identity until Winlight restarted, so they took each other's remembered brightness and names. Windows keeps a monitor's record per port and updates it; Winlight now reads it afresh instead of once per run.
 - Two of Windows' power notifications in a row could be taken for one repeated message, and the second dropped: for example the built-in display's new level straight after the charger is plugged in or unplugged, which "Keep brightness when plugging in or unplugging" relies on. Shown with Windows' own message path on the test laptop; whether Windows does this by itself hasn't been seen.
+- After a detection that didn't finish in time, Winlight waited for every stuck call to return before detecting again, not only for that detection. With one display's call stuck for good, no detection ran again, and every display stayed out of reach until Winlight was restarted.
+- Quitting was one sequence of steps: if one had failed, the steps after it were skipped, putting the colors back among them, and the screen stayed tinted after quitting until the next start. Each step now runs on its own.
+- Report a Problem's Show File started Explorer by its bare name, which Windows looks for in the app's and the current folder first; it is now started from the Windows folder, as reg.exe is from System32. A test checks that every program is started by its full path.
 
 ## 0.7.5 Beta 1 (2026-10-30)
 

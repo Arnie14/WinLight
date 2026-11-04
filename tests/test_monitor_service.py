@@ -495,6 +495,37 @@ def test_a_hung_detection_is_bounded_and_retried(short_timeouts):
     service.step()
 
 
+def test_a_late_detection_is_followed_by_another_even_while_a_display_stays_stuck(short_timeouts):
+    """A detection that returns late is followed by a fresh one. Its watcher
+    waited for every stuck call to return, not for the detection: with one
+    display's write stuck for good, no detection ever ran again, and every
+    display stayed unreachable until a restart."""
+    backend = ScriptedBackend([("A", True), ("B", True)])
+    service, events, clock = make(backend, CallRunner("test"))
+    detect(service, clock)
+    stuck_for_good = backend.blocked["A"] = threading.Event()
+    service.request_write(Write("A", 10))
+    service.run_pending()  # A's write is given up on and stays stuck
+    backend.block_detection = threading.Event()
+    service.request_detect(force=True)
+    service.run_pending()
+    assert of(events, DetectionStuck)
+    detections = len(of(events, Detected))
+    backend.block_detection.set()  # the detection returns, late; A is still stuck
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and len(of(events, Detected)) == detections:
+        clock.now += 10
+        service.run_pending()
+        threading.Event().wait(0.02)
+    assert len(of(events, Detected)) > detections, "no detection after the late one returned"
+    service.request_write(Write("B", 40))
+    service.run_pending()
+    assert ("B", 40) in backend.sets()  # the other display works again
+    stuck_for_good.set()
+    service.close()
+    service.step()
+
+
 def test_closing_with_a_stuck_call_does_not_wait_for_it(short_timeouts):
     backend = ScriptedBackend([("A", True)])
     service, events, clock = make(backend, CallRunner("test"))
