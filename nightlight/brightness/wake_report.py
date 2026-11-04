@@ -10,7 +10,14 @@ and how long detection took, so a report shows exactly when each display came
 back, or that one never did.
 
 Once every display that answered before sleep has answered in two passes in
-a row, the rest of the schedule is skipped.
+a row, the rest of the schedule is skipped; only this schedule's passes, not
+ones the displays coming on asked for. If none answered before sleep (one
+had just stopped, as in a tester's log), there is nothing to wait for, and
+the schedule runs to the end.
+
+A pass long after the last one due belongs to no wake this report knows
+of: the PC slept again before checking finished (its timers fire as it
+wakes), and the report ends there, rather than reporting "+29100 s".
 """
 
 from __future__ import annotations
@@ -32,6 +39,9 @@ RESCAN_AFTER_WAKE_S = (2, 5, 10, 20, 30, 60, 120)
 # the clock check both report it).
 SAME_WAKE_S = 60.0
 STABLE_PASSES = 2
+# A pass this long after the last one due is after another sleep.
+LATE_PASS_S = 60.0
+OWNER = "wake"  # its detections, for MonitorManager.cancel_scheduled
 
 
 class WakeReport(QObject):
@@ -60,7 +70,7 @@ class WakeReport(QObject):
         self._stable = 0
         self.lines = []
         log.info("Woke up; detecting displays again at %s s", ", ".join(map(str, RESCAN_AFTER_WAKE_S)))
-        monitors.refresh_later(RESCAN_AFTER_WAKE_S)
+        monitors.refresh_later(RESCAN_AFTER_WAKE_S, owner=OWNER)
         return True
 
     def _on_scan_started(self) -> None:
@@ -72,6 +82,9 @@ class WakeReport(QObject):
         now = self._clock()
         after = now - self._woke_at
         monitors = self._monitors
+        if after > RESCAN_AFTER_WAKE_S[-1] + LATE_PASS_S:
+            self._finish(after, slept_again=True)
+            return
         answering, silent = [], []
         for monitor in monitors.monitors:
             if not monitor.supported:
@@ -82,7 +95,9 @@ class WakeReport(QObject):
             else:
                 answering.append(f"{monitor.name} {value}%")
                 self._first_answer.setdefault(monitor.key, after)
-        took = f", detection took {now - self._scan_started:.1f} s" if self._scan_started is not None else ""
+        # A detection begun before the wake (before the sleep) took no time to tell.
+        started = self._scan_started
+        took = f", detection took {now - started:.1f} s" if started is not None and started >= self._woke_at else ""
         line = f"+{after:.0f} s: {len(answering)} of {len(answering) + len(silent)} answering"
         line += f" ({', '.join(answering) or 'none'}" + (f"; not answering: {', '.join(silent)}" if silent else "") + f"){took}"
         self.lines.append(line)
@@ -90,19 +105,24 @@ class WakeReport(QObject):
 
         answered = {m.key for m in monitors.monitors if m.supported and _answer(monitors, m.key) is not None}
         self._stable = self._stable + 1 if self._expected <= answered else 0
-        if self._stable >= STABLE_PASSES:
+        if self._expected and self._stable >= STABLE_PASSES:
             self._finish(after, early=True)
         elif after >= RESCAN_AFTER_WAKE_S[-1] - 1:
-            self._finish(after, early=False)
+            self._finish(after)
 
-    def _finish(self, after: float, early: bool) -> None:
+    def _finish(self, after: float, early: bool = False, slept_again: bool = False) -> None:
         names = {m.key: m.name for m in self._monitors.monitors}
         back = [f"{names.get(key, key)} at +{seconds:.0f} s" for key, seconds in sorted(self._first_answer.items(), key=lambda kv: kv[1])]
         missing = [names.get(key, key) for key in self._expected if key not in self._first_answer]
-        summary = "answering again: " + (", ".join(back) or "none") + (f"; never answered: {', '.join(missing)}" if missing else "")
+        summary = "answering again: " + (", ".join(back) or "none")
+        if slept_again:
+            summary += " (the PC slept again before checking finished)"
+            self._monitors.cancel_scheduled(OWNER)
+        elif missing:
+            summary += f"; never answered: {', '.join(missing)}"
         if early:
             summary += f" (stopped checking at +{after:.0f} s)"
-            self._monitors.cancel_scheduled()
+            self._monitors.cancel_scheduled(OWNER)
         self.lines.append(summary)
         log.info("Wake summary: %s", summary)
         self._woke_at = None

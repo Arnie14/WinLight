@@ -123,6 +123,29 @@ def test_a_display_that_ignores_writes_is_noticed(manager, monkeypatch, caplog):
         monitors.shutdown()
 
 
+def test_a_display_ignoring_changes_is_logged_again_later_not_once_per_run(manager, monkeypatch, caplog):
+    """Winlight ran two weeks in a tester's log, and the warning came once, on
+    the first day: whether the monitor ignored changes later couldn't be told."""
+    monkeypatch.setattr(monitors_module, "VERIFY_DELAY_MS", 50)
+    monkeypatch.setattr(monitors_module, "WARN_IGNORED_AGAIN_S", 4.0)  # each change takes over a second to verify
+    backend = SlowBackend(delay=0)
+    backend.ignores_writes = True
+    monitors = manager(backend)
+    state = ready(monitors)
+
+    def ignored(level):
+        monitors.set_brightness("A", level)
+        assert wait_until(lambda: state.commanded == level and state.observed == 50 and not state.verify)
+
+    with caplog.at_level(logging.WARNING):
+        ignored(90)
+        ignored(80)  # soon after: not again
+        assert caplog.text.count("but reports 50%") == 1
+        QTest.qWait(3000)
+        ignored(70)
+        assert caplog.text.count("but reports 50%") == 2
+
+
 def test_refresh_requests_during_a_refresh_are_merged(manager):
     backend = SlowBackend()
     backend.release.clear()
@@ -253,6 +276,22 @@ def test_schedules_add_up_instead_of_replacing(manager):
     monitors.refresh_later((2.5,))  # covered by the one at 2 s
     due = sorted(round(d - time.monotonic()) for d, _ in monitors._scheduled)
     assert due == [2, 5, 8, 30, 60]
+    monitors.cancel_scheduled()
+    assert monitors._scheduled == []
+
+
+def test_cancelling_one_schedule_keeps_the_detections_another_asked_for(manager):
+    """A tester's log: waking scheduled detections, the displays coming on
+    asked for more 2.5 s later (some covered by the wake's), and the wake
+    report stopping early cancelled them all; the Dell, back moments later,
+    went unseen for 4 minutes."""
+    monitors = manager(SlowBackend())
+    monitors.refresh_later((2, 5, 10, 20, 30, 60, 120), owner="wake")
+    started = time.monotonic()
+    monitors.refresh_later((0.5, 5.5, 17.5))  # displays on: 3, 8 and 20 s after the wake (two covered by its own)
+    monitors.cancel_scheduled("wake")
+    due = sorted(round(d - started, 1) for d, timer in monitors._scheduled if timer.isActive())
+    assert due == [0.5, 5.0, 17.5]  # the one at 5 s covers 5.5 for the displays coming on
     monitors.cancel_scheduled()
     assert monitors._scheduled == []
 

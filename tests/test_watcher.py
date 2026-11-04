@@ -133,6 +133,74 @@ def test_changing_the_clock_is_not_taken_for_waking_up():
     assert seen == ["clockChanged"]
 
 
+def sleeping_watcher(events):
+    """A watcher with both clocks faked: the wall clock and time that counts sleep."""
+    wall, ticks = Clock(), Clock()
+    w = DisplayWatcher(QApplication.instance(), clock=wall, events=events, ticks=ticks)
+    seen = []
+    for name in ("suspending", "resumed", "clockChanged"):
+        getattr(w, name).connect(lambda name=name: seen.append(name))
+    return w, wall, ticks, seen
+
+
+def sleep(wall, ticks, seconds):
+    wall.now += seconds
+    ticks.now += seconds
+
+
+def test_windows_syncing_the_clock_as_it_wakes_doesnt_hide_the_wake(caplog):
+    """A tester's log: Modern Standby sends no suspend or resume, and Windows
+    synced the clock before the next check; the jump was put down to the
+    clock change, and the wake went unnoticed."""
+    events = FakeEvents()
+    w, wall, ticks, seen = sleeping_watcher(events)
+    sleep(wall, ticks, 29100)
+    events.clockChanged.emit()
+    with caplog.at_level("INFO"):
+        w.check_clock()
+    assert seen == ["clockChanged", "resumed"]
+    assert "Woke up after 29100 s" in caplog.text
+
+
+def test_a_sleep_windows_announced_isnt_taken_for_one_that_never_happened(caplog):
+    """The same log: "going to sleep 23499 s ago, but it is still running",
+    after a 6-hour sleep whose wake came with a clock change first."""
+    events = FakeEvents()
+    w, wall, ticks, seen = sleeping_watcher(events)
+    events.suspending.emit()
+    sleep(wall, ticks, 23499)
+    events.clockChanged.emit()
+    with caplog.at_level("INFO"):
+        w.check_clock()
+    assert seen == ["suspending", "clockChanged", "resumed"]
+    assert "Woke up after 23499 s" in caplog.text and "still running" not in caplog.text
+
+
+def test_setting_the_clock_forward_is_still_not_a_wake():
+    events = FakeEvents()
+    w, wall, ticks, seen = sleeping_watcher(events)
+    wall.now += 3600  # set an hour forward: time that counts sleep doesn't move
+    ticks.now += 5
+    events.clockChanged.emit()
+    w.check_clock()
+    assert seen == ["clockChanged"]
+
+
+def test_the_wall_clock_still_notices_a_wake_where_the_other_clock_misses_it():
+    w, wall, ticks, seen = sleeping_watcher(FakeEvents())
+    wall.now += 600  # a clock that stopped while asleep: the wall clock tells
+    ticks.now += 5
+    w.check_clock()
+    assert seen == ["resumed"]
+
+
+def test_time_with_sleep_is_a_steady_clock():
+    from nightlight.system.watcher import time_with_sleep
+
+    first = time_with_sleep()
+    assert time_with_sleep() >= first
+
+
 def test_input_while_the_displays_are_reported_off_means_they_are_on():
     # A missed "display on" notification left them "off" until the next sleep.
     events = FakeEvents()

@@ -32,10 +32,12 @@ class FakeMonitors(QObject):
         value = self.brightness.get(key)
         return DisplayState(info, Status.OK if value is not None else Status.NOT_RESPONDING, observed=value)
 
-    def refresh_later(self, delays):
+    def refresh_later(self, delays, owner=""):
         self.scheduled.append(tuple(delays))
+        self.owner = owner
 
-    def cancel_scheduled(self):
+    def cancel_scheduled(self, owner=None):
+        assert owner == self.owner  # only its own detections, never everyone's
         self.cancelled += 1
 
     def scan(self, readings):
@@ -118,3 +120,49 @@ def test_displays_that_did_not_answer_before_sleep_are_not_waited_for():
         clock["now"] = 1000 + after
         monitors.scan({"DEL41A2": 70})
     assert monitors.cancelled == 1  # everyone expected is back: stop early
+
+
+# --- From a tester's two-week log -----------------------------------------------
+
+
+def test_with_nothing_answering_before_sleep_it_checks_to_the_end():
+    """The Dell had stopped answering just before the PC slept: nothing was
+    expected back, two passes counted as "everyone is back", checking stopped
+    at +5 s, and the Dell, back a few seconds later, went unseen."""
+    report, monitors, clock = make()
+    monitors.brightness = {}
+    report.woke()
+    for after in (2, 5, 10):
+        clock["now"] = 1000 + after
+        monitors.scan({})
+    assert monitors.cancelled == 0
+    clock["now"] = 1020
+    monitors.scan({"DEL41A2": 70})
+    assert "DELL 70%" in report.lines[-1]
+
+
+def test_a_pass_after_the_pc_slept_again_ends_the_report_instead_of_joining_it():
+    """"After waking +29100 s": the PC slept before checking finished, and
+    the timers left over fired as it woke the next morning."""
+    report, monitors, clock = make()
+    report.woke()
+    clock["now"] = 1003
+    monitors.scan({"DEL41A2": 70, "GSM5B7F": None})
+    clock["now"] = 1000 + 29100
+    monitors.scan({"DEL41A2": 70, "GSM5B7F": 40})
+    assert len(report.lines) == 2 and "+29100" not in " ".join(report.lines)
+    assert report.lines[-1] == "answering again: DELL at +3 s (the PC slept again before checking finished)"
+    assert monitors.cancelled == 1
+    assert report.woke()  # the next wake starts its own report
+
+
+def test_a_detection_begun_before_the_wake_is_not_timed():
+    """"Detection took 1533.8 s": begun before the sleep, finished after."""
+    report, monitors, clock = make()
+    monitors.refreshStarted.emit()  # before sleep
+    clock["now"] = 2000
+    report.woke()
+    clock["now"] = 2002
+    monitors.brightness = {"DEL41A2": 70, "GSM5B7F": 40}
+    monitors.refreshed.emit()
+    assert "took" not in report.lines[0]

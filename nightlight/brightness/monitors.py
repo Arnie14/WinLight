@@ -68,6 +68,9 @@ VERIFY_TOLERANCE = 3  # percent; monitors and WMI levels round
 # laptop panel through WMI does: Windows eases the backlight to it). A reading
 # that soon is not taken as the truth; the verification read decides.
 SETTLE_S = 1.0
+# A display ignoring a change is logged once in this long, not once per run:
+# Winlight runs for weeks, and a report should show it happening again.
+WARN_IGNORED_AGAIN_S = 3600.0
 # How long quitting waits for the call in progress.
 SHUTDOWN_WAIT_S = 3.0
 # Changes that aren't a slider drag (the brightness schedule, the command
@@ -737,9 +740,10 @@ class MonitorManager(QObject):
         self._read_at = 0.0
         self._paused = False
         self._scheduled: list[tuple[float, QTimer]] = []  # (when due, timer)
+        self._owners: dict[int, set[str]] = {}  # id(timer) -> the schedules that want it
         self._written_at: dict[str, float] = {}  # key -> when the app last changed it
         self._verify_keys: set[str] = set()
-        self._warned_ignored: set[str] = set()
+        self._warned_ignored: dict[str, float] = {}  # key -> when last warned
         # key -> (the level to give it once on SDR brightness, the detection it was found at)
         self._after_hdr_lock: dict[str, tuple[int | None, int]] = {}
         self._verify_timer = QTimer(self, singleShot=True, interval=VERIFY_DELAY_MS)
@@ -793,7 +797,7 @@ class MonitorManager(QObject):
         self._read_at = time.monotonic()
         self._service.request_retry()
 
-    def refresh_later(self, delays_s: Iterable[float]) -> None:
+    def refresh_later(self, delays_s: Iterable[float], owner: str = "") -> None:
         """Detect displays after each delay.
 
         Monitors often don't answer DDC/CI until a few seconds after being
@@ -801,25 +805,41 @@ class MonitorManager(QObject):
         Twinkle Tray look again several times rather than once. Schedules add
         up (a display change soon after waking keeps the wake's long
         schedule); a detection already due within a second of a new one
-        covers it.
+        covers it, for both. `owner` names the schedule, for cancel_scheduled.
         """
         now = time.monotonic()
         self._scheduled = [(due, timer) for due, timer in self._scheduled if timer.isActive()]
+        self._owners = {id(timer): self._owners.get(id(timer), {""}) for _due, timer in self._scheduled}
         for delay in delays_s:
             due = now + delay
-            if any(abs(due - other) < 1.0 for other, _ in self._scheduled):
+            covering = next((timer for other, timer in self._scheduled if abs(due - other) < 1.0), None)
+            if covering is not None:
+                self._owners[id(covering)].add(owner)
                 continue
             timer = QTimer(self, singleShot=True, interval=int(delay * 1000))
             timer.timeout.connect(self.refresh)
             timer.start()
             self._scheduled.append((due, timer))
+            self._owners[id(timer)] = {owner}
 
-    def cancel_scheduled(self) -> None:
-        """Drop detections scheduled by refresh_later."""
-        for _due, timer in self._scheduled:
-            timer.stop()
-            timer.deleteLater()
-        self._scheduled = []
+    def cancel_scheduled(self, owner: str | None = None) -> None:
+        """Drop detections scheduled by refresh_later: all of them, or the
+        ones only `owner` asked for. Found in a tester's log: the wake
+        report, stopping early, also dropped the detections the displays
+        coming on had asked for, and a monitor that came back a few seconds
+        later went unseen for 4 minutes."""
+        kept = []
+        for due, timer in self._scheduled:
+            owners = self._owners.get(id(timer), set())
+            if owner is not None:
+                owners.discard(owner)
+            if owner is None or not owners:
+                timer.stop()
+                timer.deleteLater()
+                self._owners.pop(id(timer), None)
+            else:
+                kept.append((due, timer))
+        self._scheduled = kept
 
     def reread_brightness(self) -> None:
         """Read the current brightness again, unless it was read very recently."""
@@ -1001,8 +1021,9 @@ class MonitorManager(QObject):
             state.verify = False
             if abs(value - state.commanded) > VERIFY_TOLERANCE and self._hdr_ddc(state):
                 self._hdr_locked(state, f"it accepted {state.commanded}% but stayed at {value}%")
-            elif abs(value - state.commanded) > VERIFY_TOLERANCE and state.key not in self._warned_ignored:
-                self._warned_ignored.add(state.key)
+            elif abs(value - state.commanded) > VERIFY_TOLERANCE and (
+                    state.key not in self._warned_ignored or now - self._warned_ignored[state.key] >= WARN_IGNORED_AGAIN_S):
+                self._warned_ignored[state.key] = now
                 log.warning("%s accepted %d%% but reports %d%%; it may ignore DDC/CI changes in its current mode",
                             state.info.name, state.commanded, value)
         self.observed.emit(event.key, value)

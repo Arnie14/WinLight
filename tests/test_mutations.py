@@ -114,6 +114,16 @@ MUTATIONS = [
      "        identity = (msg.message, msg.wParam, msg.lParam, msg.time, setting, data)",
      "        identity = (msg.message, msg.wParam, msg.lParam, msg.time)",
      ["tests/test_winsystem.py::test_different_notifications_through_one_buffer_all_arrive"]),
+    ("stopping the wake's checks cancels every scheduled detection", "nightlight/brightness/wake_report.py",
+     '''            summary += f" (stopped checking at +{after:.0f} s)"
+            self._monitors.cancel_scheduled(OWNER)''',
+     '''            summary += f" (stopped checking at +{after:.0f} s)"
+            self._monitors.cancel_scheduled()''',
+     ["tests/test_wake_report.py::test_stops_early_once_everyone_is_back_twice"]),
+    ("Windows syncing the clock as it wakes hides the wake", "nightlight/system/watcher.py",
+     "        self._clock_changed = True\n",
+     "        self._clock_changed = True\n        self._last_ticks = self._ticks()\n",
+     ["tests/test_watcher.py::test_windows_syncing_the_clock_as_it_wakes_doesnt_hide_the_wake"]),
 ]
 
 

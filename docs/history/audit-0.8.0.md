@@ -18,6 +18,19 @@ Every module was read against the design rules in [windows-notes.md](../windows-
 | `brightness/keys` | The laptop-key follower's 2-second check started only if the panel was already found when it was turned on, which at start it never is. | Laptops that don't send Windows' brightness notification |
 | `hardware/safe_mode` | The crash marker wasn't flushed, so a crash taking Windows down lost it, and the display was talked to again. Its exception to the atomic-write rule said a torn marker was "the safe outcome"; it is the unsafe one. | A monitor or driver that crashes Windows |
 
+## From a tester's log
+
+Before Beta 1, a tester's two weeks of 0.7.5 Beta 1 on a laptop with a Dell P2419HC over HDMI (DDC/CI) were read against the code. DDC/CI did what it should: the Dell answered again within 0–7 s at all 90 wakes, its brightness was restored each time, and the 5 retries and 5 fallbacks to the high-level API all worked. Duplicate mode at waking was handled too: the panel went through WMI and the Dell through DDC/CI. The bugs:
+
+| Where | What went wrong | Who would see it |
+|---|---|---|
+| `brightness/wake_report`, `monitors.cancel_scheduled` | Stopping the checks after waking cancelled every scheduled detection, the displays coming on's too; and with nothing answering before sleep, it stopped after two passes. The Dell, back a few seconds later, went unseen for 4 minutes. | A monitor slow to come back after waking |
+| `system/watcher` | Windows syncs the clock as it wakes; its clock-change message re-baselined the wall-clock check, so the wake wasn't noticed (Modern Standby sends no resume), and a 6-hour sleep was logged as one that never happened. | Most PCs, after sleep |
+| `brightness/wake_report` | Passes left over when the PC slept again joined the earlier wake's report ("+29100 s"). | Reports only |
+| `brightness/monitors` | "Ignores DDC/CI changes" was logged once per run, which lasts weeks. | Reports only |
+
+Each has a test replaying the log's sequence, and two more cases in `tests/test_mutations.py` (20 in all). Night light, the brightness schedule and shortcuts weren't used in that log; the tester is trying them next.
+
 ## Tests added
 
 - A regression test for each bug above, and four new cases in `tests/test_mutations.py` (17 in all).

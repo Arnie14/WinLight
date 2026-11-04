@@ -12,8 +12,13 @@ Sources, merged so that one event gives one signal:
   displays off and on, WM_DISPLAYCHANGE (which also covers HDR being
   switched), clock changes. Unlocking goes to the app directly: it only
   needs night light put back at once, not displays detected again.
-- A jump in the wall clock between checks, which notices waking even
-  without Windows' notifications (other platforms, or if they failed).
+- A jump in time between checks, which notices waking even without
+  Windows' notifications (other platforms, or if they failed, or Modern
+  Standby, which sends none). Two clocks: one that counts time asleep but
+  isn't moved by clock changes, and the wall clock, except across a clock
+  change. Windows syncs the clock as it wakes; with the wall clock alone, a
+  tester's log showed that sync hiding the wake, and a 6-hour sleep taken
+  for a sleep that never happened.
 """
 
 from __future__ import annotations
@@ -50,6 +55,15 @@ INPUT_AFTER_OFF_S = 2.0
 SETTLE_MAX_WAIT_S = 5.0
 
 
+def time_with_sleep() -> float:
+    """Seconds that go on counting while the PC sleeps, and that changing
+    the clock doesn't move: Python's monotonic clock on Windows (the same
+    tester's log showed it counting a 25-minute sleep), the boot-time clock
+    on Linux, whose monotonic clock stops while suspended."""
+    boottime = getattr(time, "CLOCK_BOOTTIME", None)
+    return time.clock_gettime(boottime) if boottime is not None else time.monotonic()
+
+
 class DisplayWatcher(QObject):
     displaysChanged = Signal()
     suspending = Signal()
@@ -59,12 +73,15 @@ class DisplayWatcher(QObject):
     clockChanged = Signal()
 
     def __init__(self, app: QGuiApplication, clock: Callable[[], float] = time.time, parent: QObject | None = None, events=None,
-                 idle_seconds: Callable[[], float | None] | None = None) -> None:
+                 idle_seconds: Callable[[], float | None] | None = None, ticks: Callable[[], float] = time_with_sleep) -> None:
         super().__init__(parent)
         self._clock = clock
+        self._ticks = ticks
         self._stopped = False
         self._idle_seconds = idle_seconds  # seconds since the last keyboard or mouse input (winsystem.idle_seconds)
         self._last_check = clock()
+        self._last_ticks = ticks()
+        self._clock_changed = False  # since the last check: the wall clock's jump says nothing
         self._native_resume_at: float | None = None
         self._suspended = False
         self._suspended_at = 0.0
@@ -103,9 +120,11 @@ class DisplayWatcher(QObject):
     def check_clock(self) -> None:
         if self._stopped:
             return
-        now = self._clock()
-        gap = now - self._last_check
-        self._last_check = now
+        now, ticks = self._clock(), self._ticks()
+        gap = ticks - self._last_ticks
+        if not self._clock_changed:
+            gap = max(gap, now - self._last_check)
+        self._last_check, self._last_ticks, self._clock_changed = now, ticks, False
         if gap > RESUME_GAP_S:
             if self._native_resume_at is not None and now - self._native_resume_at < NATIVE_RESUME_WINDOW_S:
                 return  # Windows already said so
@@ -130,7 +149,8 @@ class DisplayWatcher(QObject):
         if self._stopped:
             return
         # The clock was changed (by hand, or synced): its jump isn't a wake.
-        self._last_check = self._clock()
+        # Time that counts sleep still tells: Windows syncs it as it wakes.
+        self._clock_changed = True
         self.clockChanged.emit()
 
     def _on_displays_off(self) -> None:
@@ -158,7 +178,7 @@ class DisplayWatcher(QObject):
         if self._stopped:
             return
         self._native_resume_at = self._clock()
-        self._last_check = self._native_resume_at
+        self._last_check, self._last_ticks = self._native_resume_at, self._ticks()
         self._resume()
 
     def _resume(self) -> None:
