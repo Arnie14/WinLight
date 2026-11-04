@@ -129,3 +129,19 @@ def test_a_display_left_to_the_user_in_hdr_doesnt_follow(keys):
     monitors.manual_in_hdr = {"DEL41A2"}
     keys.on_windows_event(10)
     assert monitors.sent == [("SAM7136", 20)]
+
+
+def test_the_panel_check_starts_once_the_panel_is_found_after_turning_on():
+    """At start the option is turned on before the first detection has found
+    the panel, and the 2-second check of the panel never started: only
+    Windows' notification was left, which some laptops don't send."""
+    monitors = FakeMonitors([])  # not detected yet
+    keys = BrightnessKeys(monitors)
+    keys.set_enabled(True)
+    assert not keys._poll.isActive()
+    monitors.monitors = [PANEL, DELL]
+    monitors.monitorsChanged.emit(monitors.monitors)  # the first detection
+    assert keys._poll.isActive()
+    keys.set_enabled(False)
+    monitors.monitorsChanged.emit(monitors.monitors)
+    assert not keys._poll.isActive()  # off stays off

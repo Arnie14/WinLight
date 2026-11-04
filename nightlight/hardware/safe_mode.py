@@ -98,8 +98,10 @@ class SafeMode:
     def _write_marker(self) -> None:
         try:
             if self._active:
-                self._marker.parent.mkdir(parents=True, exist_ok=True)
-                self._marker.write_text(json.dumps({"in_progress": self._active}), encoding="utf-8")
+                # Atomic and on the disk (write_atomic flushes it) before the
+                # call: a crash taking Windows down loses unflushed writes, and
+                # a lost or torn marker reads as none, so nothing is skipped.
+                write_atomic(self._marker, json.dumps({"in_progress": self._active}))
             else:
                 self._marker.unlink(missing_ok=True)
         except OSError:

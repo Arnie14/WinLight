@@ -283,7 +283,6 @@ def test_every_timer_has_an_owner():
 WRITES_ALLOWED = {
     "nightlight/files.py": "write_atomic itself: the temporary file it then swaps in",
     "nightlight/config.py": "a copy of an unreadable settings file, kept aside for recovering by hand",
-    "nightlight/hardware/safe_mode.py": "the DDC/CI marker: a torn marker reads as none, the safe outcome",
     "nightlight/support/diagnostics.py": "the Report a Problem zip, a new file each time",
     "nightlight/support/probe.py": "--probe's report, a new file the user asked for",
     "nightlight/system/autostart.py": "Linux's autostart .desktop file (development only)",

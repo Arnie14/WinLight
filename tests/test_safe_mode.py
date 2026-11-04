@@ -100,3 +100,20 @@ def test_odd_files_are_ignored(tmp_path):
     (tmp_path / "ddc-in-progress.json").write_text("{nope")
     (tmp_path / "ddc-skip.json").write_text(json.dumps({"not": "a list"}))
     assert SafeMode(tmp_path).skipped == set()
+
+
+def test_the_marker_is_on_the_disk_before_the_risky_call(tmp_path, monkeypatch):
+    """It exists for crashes, the worst being a driver taking Windows down:
+    a marker written without flushing was lost with it, and the display that
+    crashed the PC was probed again at the next start. Lost or torn reads as
+    no marker, which isn't skipping: the unsafe outcome."""
+    from nightlight.hardware import safe_mode as safe_mode_module
+
+    written = []
+    real = safe_mode_module.write_atomic
+    monkeypatch.setattr(safe_mode_module, "write_atomic", lambda path, text: (written.append(path.name), real(path, text))[1])
+    mode = safe_mode_module.SafeMode(tmp_path)
+    with mode.risky("DEL41A2:AAA111", "detecting DELL"):
+        assert written[-1] == "ddc-in-progress.json"
+        assert "DEL41A2:AAA111" in (tmp_path / "ddc-in-progress.json").read_text(encoding="utf-8")
+    assert not (tmp_path / "ddc-in-progress.json").exists()

@@ -44,16 +44,21 @@ class BrightnessKeys(QObject):
         self._poll = QTimer(self, interval=POLL_MS)
         self._poll.timeout.connect(self._read_panel)
         monitors.observed.connect(self._on_observed)
-        monitors.monitorsChanged.connect(self._forget_known)
+        monitors.monitorsChanged.connect(self._on_monitors_changed)
 
-    def _forget_known(self, *_args) -> None:
+    def _on_monitors_changed(self, *_args) -> None:
         self._known = None
+        # Turned on before the panel was found (at start, before the first
+        # detection): the check starts now. A panel gone (docked, lid shut): it stops.
+        if self._enabled:
+            self.set_enabled(True)
 
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
         if enabled and self._panel() is not None:
-            self._poll.start()
-        elif not enabled:
+            if not self._poll.isActive():
+                self._poll.start()
+        else:
             self._poll.stop()
 
     def on_windows_event(self, level: int) -> None:
