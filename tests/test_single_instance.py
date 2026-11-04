@@ -182,3 +182,19 @@ def test_nothing_is_sent_to_a_pipe_another_user_holds(first, monkeypatch):
     assert answer["ok"] is False and "Another user's program" in answer["output"]
     QTest.qWait(100)
     assert received == [] and first.received["show"] == 0
+
+
+@pytest.mark.parametrize("user", ["J. Smith", "Zoë O'Brien-López", "名前.ユーザー", "a.b.c d"])
+def test_a_user_name_with_periods_spaces_or_any_script_still_reaches_the_running_copy(user):
+    """The pipe's name holds the user name (default_name). Twinkle Tray 1.17.1
+    fixed failing to start for a user whose folder had periods and spaces."""
+    name = f"night-light-{user}-{uuid.uuid4().hex[:8]}"
+    instance = SingleInstance(name)
+    assert instance.notify_running() is False
+    shown = []
+    instance.activated.connect(lambda: shown.append(True))
+    try:
+        launch = second_launch(name, "launch")
+        assert wait_for(lambda: shown, launch) == 0 and shown
+    finally:
+        instance.close()

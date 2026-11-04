@@ -62,3 +62,25 @@ def test_the_new_contents_reach_the_disk_before_the_rename(tmp_path, monkeypatch
     files.write_atomic(tmp_path / "settings.json", "{}")
     assert order == ["fsync", "replace"]
     assert (tmp_path / "settings.json").read_text(encoding="utf-8") == "{}"
+
+
+@pytest.mark.parametrize("folder", ["J. Smith", "Zoë O'Brien-López", "名前.ユーザー", "a.b.c d"])
+def test_the_data_files_work_under_any_user_folder_name(tmp_path, folder):
+    """Twinkle Tray 1.17.1 failed to start for a user whose folder held periods
+    and spaces. Settings, the gamma journal, safe mode's marker and hints."""
+    from nightlight import config
+    from nightlight.config import AppConfig, NightLightConfig
+    from nightlight.hardware import windows
+    from nightlight.hardware.safe_mode import SafeMode
+
+    data = tmp_path / folder / "AppData" / "Local" / "WinLight"
+    settings = AppConfig(NightLightConfig(enabled=True, night_temperature=3300))
+    config.save(settings, data / "settings.json")
+    assert config.load(data / "settings.json") == settings
+    journal = windows.GammaJournal(data / "gamma.json")
+    journal.remember_calibration("DEL41A2", [[i * 257 for i in range(256)]] * 3)
+    journal.save()
+    assert windows.GammaJournal(data / "gamma.json").calibration("DEL41A2") is not None
+    mode = SafeMode(data)
+    with mode.risky("DEL41A2", "detecting"):
+        assert (data / "ddc-in-progress.json").exists()
