@@ -139,7 +139,7 @@ nightlight/
   cli/                      client (winlight-cli) and commands (what the app does for it)
   ui/                       tray, flyout, settings window and its parts, schedule editor, day_ribbon (a day of
                             night light or brightness), the preview note, shortcut_editor and shortcut_overlay,
-                            theme, icons
+                            theme, icons, welcome (the welcome screen)
   data/                     time zone table for picking a location (from tools/make_timezones.py)
 packaging/                  PyInstaller spec, Inno Setup script, installer notes, licenses, build.py, icon
 tools/                      hardware_checks.py, third_party_notices.py, screenshots.py, make_timezones.py

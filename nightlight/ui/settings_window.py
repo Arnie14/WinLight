@@ -204,6 +204,7 @@ class SettingsWindow(QWidget):
         shortcut_status: Callable[[str], str] | None = None,
         pause_shortcuts: Callable[[bool], None] | None = None,
         check_updates: Callable[[], None] | None = None,
+        show_welcome: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
@@ -218,6 +219,7 @@ class SettingsWindow(QWidget):
         self._running_apps = running_apps
         self._report_problem = report_problem
         self._check_updates = check_updates  # UpdateChecker.check_now
+        self._show_welcome = show_welcome
         self._reload_calibrations = reload_calibrations
         self._unlock_warmer = unlock_warmer  # sets GdiIcmGammaRange: "done", "cancelled" or "failed"
         self._lock_warmer = lock_warmer  # removes it again, likewise
@@ -848,6 +850,11 @@ class SettingsWindow(QWidget):
             view.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(notices))))
             about.add(SettingRow("Third-party software", "Qt, Python and the other components Winlight includes, and their licenses",
                                  view))
+        if self._show_welcome is not None:
+            self.show_welcome = QPushButton("Show")
+            self.show_welcome.clicked.connect(self._show_welcome)
+            about.add(SettingRow("Welcome screen", "When night light comes on, what on this PC would clash with Winlight, "
+                                 "and switching from another app", self.show_welcome))
         logs = QPushButton("Open folder")
         logs.clicked.connect(_open_log_folder)
         about.add(SettingRow("Log files", "The log and diagnostic files Winlight keeps", logs))

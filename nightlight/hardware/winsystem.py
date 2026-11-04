@@ -291,6 +291,27 @@ def running_apps() -> list[str]:
     return sorted(names - SHELL_PROCESSES - {UWP_HOST, "winlight.exe"})
 
 
+def running_programs() -> set[str]:
+    """Lower-case executable names of every process this user can see,
+    windowless ones included (tray apps such as f.lux or Twinkle Tray), for
+    noticing other tools that would clash. Only reads; never raises."""
+    if sys.platform != "win32":
+        return set()
+    from ctypes import wintypes
+
+    count = 1024
+    while True:
+        pids = (wintypes.DWORD * count)()
+        needed = wintypes.DWORD()
+        if not _kernel32.K32EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(needed)):
+            log.debug("EnumProcesses failed (%d)", ctypes.get_last_error())
+            return set()
+        if needed.value < ctypes.sizeof(pids):
+            break
+        count *= 2  # the array was full: there may be more
+    return {exe for pid in pids[: needed.value // ctypes.sizeof(wintypes.DWORD)] if pid and (exe := _exe_of(pid))}
+
+
 # --- Session and power events -------------------------------------------------
 
 WM_ENDSESSION = 0x0016
@@ -781,6 +802,8 @@ if sys.platform == "win32":
     _kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
     _kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
     _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _kernel32.K32EnumProcesses.argtypes = [ctypes.POINTER(wintypes.DWORD), wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    _kernel32.K32EnumProcesses.restype = wintypes.BOOL
     _wtsapi32.WTSRegisterSessionNotification.argtypes = [wintypes.HWND, wintypes.DWORD]
     _wtsapi32.WTSRegisterSessionNotification.restype = wintypes.BOOL
     _wtsapi32.WTSUnRegisterSessionNotification.argtypes = [wintypes.HWND]

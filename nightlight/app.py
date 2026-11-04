@@ -59,6 +59,7 @@ from nightlight.ui.night_light_text import night_light_status, toggle_night_ligh
 from nightlight.ui.settings_window import SettingsWindow
 from nightlight.ui.shortcut_overlay import ShortcutOverlay
 from nightlight.ui.tray import Tray
+from nightlight.ui.welcome import WelcomeWindow
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,9 @@ CLEANUP_DELAY_MS = 60_000
 CLEANUP_INTERVAL_MS = 24 * 3600_000
 # Hints shown once ever (their names are kept in hints.json next to the settings).
 CALIBRATION_HINT = "calibration"
+# The welcome screen: shown once ever; due at the first start, until it could be shown.
+WELCOME_HINT = "welcome"
+WELCOME_DUE = "welcome-due"
 HINT_MS = 20_000
 
 
@@ -98,6 +102,7 @@ class NightLightApp:
     def __init__(self, qapp: QApplication, brightness: BrightnessBackend, gamma: GammaBackend, config_path: Path) -> None:
         self._qapp = qapp
         self._config_path = config_path
+        first_start = not config_path.exists()  # no settings yet: a new install, not an upgrade
         self._config = config.load(config_path)
         self._shut_down = False
         log.info("Settings file: %s", config_path)
@@ -140,8 +145,11 @@ class NightLightApp:
         self.controller = NightLightController(gamma, self._config.night_light, zone=zone, start=False)
         self.commands = CommandHandler(self.monitors, self.controller, lambda: self._config, gamma)
         self._settings: SettingsWindow | None = None
+        self._welcome: WelcomeWindow | None = None
         self._hints_path = config_path.with_name("hints.json")
         self._hints = _load_hints(self._hints_path)
+        if first_start and WELCOME_HINT not in self._hints:
+            self._hints.add(WELCOME_DUE)  # kept until it could be shown (a fullscreen game at the first start)
         self._windows_night_light: bool | None = None
         self._autostart = autostart.create()
         self._read_autostart()  # only read: writing it at every start set off Defender
@@ -227,7 +235,12 @@ class NightLightApp:
         self.monitors.monitorsChanged.connect(self._hint_calibration)
         self.monitors.refresh()
         # Last, once everything the settings window uses (the shortcuts among it) exists.
-        if self.tray is not None and not self._config.general.start_minimized and not self._busy("the settings at start"):
+        if self.tray is not None and WELCOME_DUE in self._hints:
+            if not self._busy("the welcome screen"):
+                self.show_welcome()
+            else:
+                _save_hints(self._hints_path, self._hints)  # due still: at the next start
+        elif self.tray is not None and not self._config.general.start_minimized and not self._busy("the settings at start"):
             self.show_settings()
 
     # --- Windows and panels ---------------------------------------------------
@@ -245,6 +258,19 @@ class NightLightApp:
             log.info("Not opening %s over a fullscreen app", what)
             return True
         return False
+
+    def show_welcome(self) -> None:
+        """The welcome screen: at the first start, and from Settings > General."""
+        if self._welcome is None:
+            self._welcome = WelcomeWindow(self.controller, lambda: self._config, self.monitors,
+                                          programs=winsystem.running_programs, open_settings=self.show_settings)
+        self._welcome.set_windows_night_light(self._windows_night_light)
+        self._welcome.refresh()  # a tool may have been quit since
+        reveal.show_window(self._welcome)
+        if WELCOME_HINT not in self._hints:
+            self._hints.add(WELCOME_HINT)
+            self._hints.discard(WELCOME_DUE)
+            _save_hints(self._hints_path, self._hints)
 
     def _open_flyout(self, anchor=None) -> None:
         self._check_windows_night_light()
@@ -278,6 +304,7 @@ class NightLightApp:
                 shortcut_status=self.shortcuts.status,
                 pause_shortcuts=self.shortcuts.pause,
                 check_updates=self.updates.check_now,
+                show_welcome=self.show_welcome,
             )
             self._settings.applied.connect(self._apply_settings)
             self.shortcuts.changed.connect(self._settings.refresh_shortcut_status)
@@ -583,6 +610,8 @@ class NightLightApp:
                 log.warning("Windows Night Light is on as well; the two tints stack")
             self._windows_night_light = on
         self.flyout.set_windows_night_light(on)
+        if self._welcome is not None:
+            self._welcome.set_windows_night_light(on)
         if self._settings is not None:
             self._settings.set_windows_night_light(on)
 

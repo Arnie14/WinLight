@@ -4,9 +4,14 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 ## 0.8.0 Beta 1 (unreleased)
 
+### Added
+
+- **A welcome screen**, at the first start of a new install: today's night light and when it comes on, and what on your PC would clash with Winlight, each with what to do: Windows Night Light being on, f.lux, LightBulb, Twinkle Tray or Monitorian running, a monitor that doesn't answer DDC/CI. It links to switching from another app and opens Settings. It isn't shown after upgrading, waits for the next start if a fullscreen game or video is in front, and Settings > General shows it again.
+
 ### Changed
 
 - **Night light is on screen at once when Winlight starts**, about 0.5 s after starting rather than 5 s on the test laptop. It used to wait for the app to be built (Windows' set-up of the first window takes up to a second) and then fade in over almost 4 seconds; at sign-in the screen had been bright for long enough already. Turning night light on, the schedule and resuming still fade. A display already showing a fullscreen game or video at start stays untinted from the beginning.
+- **Buttons no longer keep a ring after a click** (Apply, Reset and the welcome screen's), as switches stopped doing in 0.7.5: the ring shows when the keyboard moves to them.
 - **Fades last as long as they should.** A 2-second change of temperature took nearly 4 seconds when the computer was busy, since it moved a fixed step at each timer tick; it follows the clock now.
 
 ### Fixed

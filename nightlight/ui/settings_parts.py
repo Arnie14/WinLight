@@ -51,7 +51,27 @@ def is_dark(palette: QPalette) -> bool:
     return palette.color(QPalette.ColorRole.Window).lightnessF() < 0.5
 
 
-class ToggleSwitch(QAbstractButton):
+class KeyboardFocusRing:
+    """For controls that draw their own focus ring: show it only when the
+    keyboard brought focus there, as Windows 11 does. A click gives focus
+    too, and a ring left after it looked like a stuck state."""
+
+    _keyboard_focus = False
+
+    def shows_focus_ring(self) -> bool:
+        return self.hasFocus() and self._keyboard_focus
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.FocusIn:
+            self._keyboard_focus = event.reason() in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason,
+                                                      Qt.FocusReason.ShortcutFocusReason)
+        elif event.type() == QEvent.Type.KeyPress:
+            self._keyboard_focus = True  # used from the keyboard after a click: show where focus is
+            self.update()
+        return super().event(event)
+
+
+class ToggleSwitch(KeyboardFocusRing, QAbstractButton):
     """An On/Off switch, like Windows 11's, with its state written beside it.
 
     A checkable button underneath, so it keeps the check box interface
@@ -68,21 +88,6 @@ class ToggleSwitch(QAbstractButton):
         if accessible_name:
             self.setAccessibleName(accessible_name)
         self.toggled.connect(self.update)
-        # The focus ring shows for keyboard focus only, as in Windows 11: a click
-        # gives focus too, and left a ring round the switch it changed.
-        self._keyboard_focus = False
-
-    def shows_focus_ring(self) -> bool:
-        return self.hasFocus() and self._keyboard_focus
-
-    def event(self, event) -> bool:
-        if event.type() == QEvent.Type.FocusIn:
-            self._keyboard_focus = event.reason() in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason,
-                                                      Qt.FocusReason.ShortcutFocusReason)
-        elif event.type() == QEvent.Type.KeyPress:
-            self._keyboard_focus = True  # used from the keyboard after a click: show where focus is
-            self.update()
-        return super().event(event)
 
     def sizeHint(self) -> QSize:
         text = max(self.fontMetrics().horizontalAdvance(t) for t in ("On", "Off"))
@@ -275,7 +280,7 @@ class PageTitle(QWidget):
             layout.addWidget(SecondaryLabel(subtitle))
 
 
-class ActionButton(QAbstractButton):
+class ActionButton(KeyboardFocusRing, QAbstractButton):
     """A button as Windows 11 draws them: "accent" (filled with the accent
     colour, for the main action), "standard" (a quiet card with a hairline
     border) or "subtle" (text only until hovered)."""
@@ -334,7 +339,7 @@ class ActionButton(QAbstractButton):
             painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), self.RADIUS, self.RADIUS)
         painter.setPen(label)
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
-        if self.hasFocus() and enabled:
+        if self.shows_focus_ring() and enabled:
             painter.setPen(QPen(text, 1.5))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.75, 0.75, -0.75, -0.75), self.RADIUS + 1, self.RADIUS + 1)

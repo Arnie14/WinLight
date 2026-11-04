@@ -60,6 +60,7 @@ python main.py --debug
 
 The log is also written to `%LOCALAPPDATA%\WinLight\Logs\WinLight.log`; its path is printed at start. The first start of a version from 0.3.0 renames an existing `%LOCALAPPDATA%\night-light` folder to `WinLight` (the log says "Renamed the settings folder"), keeping its settings.
 
+- [ ] First start with no settings yet (rename `%LOCALAPPDATA%\WinLight` first, and back after): the welcome screen opens, unless a fullscreen game or video is in front, when it waits for the next start. It names what is running and clashes: start f.lux or Twinkle Tray, or turn Windows Night Light on, and click Settings > General > Welcome screen > Show again: they are listed, each with what to do. Starting a second time doesn't show it.
 - [ ] A sun or moon icon appears in the tray, sharp at your scaling and readable on a light and a dark taskbar. Repeat the checks below with the icon in the overflow (^) area too.
 - [ ] Hover over the icon: "Winlight", "Night Light: …" with the status, the brightness schedule's level while that schedule is on, and any display night light is paused on.
 - [ ] Left-click: the panel opens just above the taskbar, its right edge in line with the icon (or in the corner by the clock), about 12 px from it.

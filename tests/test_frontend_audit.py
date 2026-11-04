@@ -115,3 +115,41 @@ def test_the_settings_windows_dialogs_are_window_modal_never_app_modal(settings)
     assert dialogs and all(d.windowModality() == Qt.WindowModality.WindowModal for d in dialogs)
     for dialog in dialogs:
         dialog.reject()
+
+
+def test_buttons_drawn_by_winlight_show_their_focus_ring_for_the_keyboard_only(settings):
+    """Apply, Reset and the welcome screen's buttons kept a ring after a click,
+    as the switches did before 0.7.5 (a mouse click gives focus too)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from nightlight.ui.settings_parts import ActionButton
+
+    settings.show()
+    settings.activateWindow()
+    QTest.qWaitForWindowActive(settings)
+    buttons = [b for b in settings.findChildren(ActionButton) if b.isVisible() and b.isEnabled()]
+    other = next(s for s in settings.findChildren(ToggleSwitch) if s.isVisible())
+    assert buttons
+    for button in buttons:
+        button.setFocus(Qt.FocusReason.MouseFocusReason)
+        assert button.hasFocus() and not button.shows_focus_ring(), button.text()
+        other.setFocus(Qt.FocusReason.MouseFocusReason)
+        button.setFocus(Qt.FocusReason.TabFocusReason)
+        assert button.shows_focus_ring(), button.text()
+    settings.hide()
+
+
+def test_every_welcome_screen_control_has_a_name_a_screen_reader_can_say():
+    from nightlight.config import Mode
+    from nightlight.ui.welcome import WelcomeWindow
+
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), programs=lambda: {"flux.exe"})
+    window.set_windows_night_light(True)  # a row with a button
+    try:
+        assert unnamed(window) == []
+    finally:
+        window.close()
+        controller.shutdown()

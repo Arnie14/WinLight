@@ -346,3 +346,13 @@ def test_different_notifications_through_one_buffer_all_arrive():
     if listening == "False" and os.environ.get("CI"):
         pytest.skip("Windows didn't register the window for notifications: no interactive desktop on this CI runner")
     assert seen.split(",")[-3:] == ["displayOn", "panel 35", "panel 60"]
+
+
+@windows_only
+def test_running_programs_include_windowless_ones():
+    from pathlib import Path
+
+    programs = winsystem.running_programs()
+    assert Path(sys.executable).name.lower() in programs  # this test's own Python, which has no window
+    assert all(name == name.lower() for name in programs)
+    assert len(programs) > 5
