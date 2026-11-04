@@ -12,6 +12,7 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - Quitting was one sequence of steps: if one had failed, the steps after it were skipped, putting the colors back among them, and the screen stayed tinted after quitting until the next start. Each step now runs on its own.
 - Report a Problem's Show File started Explorer by its bare name, which Windows looks for in the app's and the current folder first; it is now started from the Windows folder, as reg.exe is from System32. A test checks that every program is started by its full path.
 - A "Cycle brightness through" shortcut whose levels held a character that looks like a digit but isn't one ("²", which AltGr+2 types on a German keyboard) raised an error in Settings, and once saved made the settings file unreadable at the next start, so Winlight started with default settings. Such characters are now left out of the levels. `winlight-cli --display ²` now says no display matches, rather than failing.
+- Settings and state files are now flushed to the disk before they replace the old ones. After a power cut, a file could otherwise be left empty, and an empty settings file meant default settings at the next start. It costs about 3 ms per save on the test laptop.
 
 ## 0.7.5 Beta 1 (2026-10-30)
 

@@ -44,3 +44,21 @@ def test_a_file_that_stays_locked_keeps_its_old_contents(tmp_path, monkeypatch):
     with pytest.raises(PermissionError):
         files.write_atomic(path, "new")
     assert path.read_text(encoding="utf-8") == "old"  # never half-written
+
+
+def test_the_new_contents_reach_the_disk_before_the_rename(tmp_path, monkeypatch):
+    """Renaming over the old file is journaled by NTFS, the new file's
+    contents aren't: after a power cut, a rename that got to the disk before
+    the data left the file empty or zeroed, and settings.json then read as
+    damaged, so Winlight started with default settings."""
+    import os
+
+    from nightlight import files
+
+    order = []
+    real_fsync, real_replace = os.fsync, os.replace
+    monkeypatch.setattr(files.os, "fsync", lambda fd: (order.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(files.os, "replace", lambda src, dst: (order.append("replace"), real_replace(src, dst))[1])
+    files.write_atomic(tmp_path / "settings.json", "{}")
+    assert order == ["fsync", "replace"]
+    assert (tmp_path / "settings.json").read_text(encoding="utf-8") == "{}"

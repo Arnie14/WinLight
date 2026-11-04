@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Writing the app's small state files safely.
 
-Each file is written to a temporary file next to it and then renamed over
-it, so a crash or power cut mid-write leaves the old file, never half a new
-one. On Windows the rename fails with "Access is denied" while another
+Each file is written to a temporary file next to it, flushed to the disk,
+and then renamed over it, so a crash or power cut mid-write leaves the old
+file, never half (or none) of a new one. On Windows the rename fails with "Access is denied" while another
 program briefly holds the file open (antivirus scanning it, the search
 indexer, a sync client), so it is tried again a few times before giving up.
 
@@ -32,6 +32,10 @@ def write_atomic(path: Path, text: str) -> None:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as file:
             file.write(text)
+            # On disk before the rename: NTFS journals the rename, not the
+            # data, so after a power cut a renamed file could be empty.
+            file.flush()
+            os.fsync(file.fileno())
         for attempt in range(ATTEMPTS):
             try:
                 os.replace(tmp, path)  # noqa: PTH105 (the tests stand in for os.replace to simulate a locked file)
