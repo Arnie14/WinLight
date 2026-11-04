@@ -94,6 +94,14 @@ MUTATIONS = [
      "                target.setAccessibleName(title)",
      "                pass",
      ["tests/test_frontend_audit.py::test_every_settings_control_has_a_name_a_screen_reader_can_say"]),
+    ("a monitor's identity is read once per run", "nightlight/hardware/win32.py",
+     "def read_edid(instance_id: str) -> edid_parser.Edid | None:",
+     "@__import__('functools').lru_cache(maxsize=64)\ndef read_edid(instance_id: str) -> edid_parser.Edid | None:",
+     ["tests/test_win32.py::test_a_monitor_swapped_for_an_identical_one_is_read_again"]),
+    ("power notifications through one buffer are taken for repeats", "nightlight/hardware/winsystem.py",
+     "        identity = (msg.message, msg.wParam, msg.lParam, msg.time, setting, data)",
+     "        identity = (msg.message, msg.wParam, msg.lParam, msg.time)",
+     ["tests/test_winsystem.py::test_different_notifications_through_one_buffer_all_arrive"]),
 ]
 
 

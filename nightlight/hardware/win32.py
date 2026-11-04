@@ -29,7 +29,6 @@ import threading
 import time
 from ctypes import wintypes
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 from nightlight.core import edid as edid_parser
@@ -544,10 +543,15 @@ def display_targets() -> list[DisplayTarget]:
     return targets
 
 
-@lru_cache(maxsize=64)
+_invalid_edids: set[str] = set()  # instance ids whose stored EDID was logged as invalid
+
+
 def read_edid(instance_id: str) -> edid_parser.Edid | None:
     """The monitor's EDID as Windows stored it in the registry, parsed; None
-    if it isn't there or is invalid. Talks to the registry, not the monitor."""
+    if it isn't there or is invalid. Talks to the registry, not the monitor.
+    Read afresh each time (microseconds): Windows keeps an instance id per
+    port and replaces its EDID when another monitor of the same model is
+    plugged in there, so a cached copy would give it the old one's identity."""
     if not instance_id or sys.platform != "win32":
         return None
     import winreg
@@ -559,7 +563,8 @@ def read_edid(instance_id: str) -> edid_parser.Edid | None:
         log.debug("No EDID in the registry for %s", instance_id)
         return None
     parsed = edid_parser.parse(data)
-    if parsed is None:
+    if parsed is None and instance_id not in _invalid_edids:
+        _invalid_edids.add(instance_id)
         log.info("The EDID stored for %s is invalid; identifying it by its hardware id only", instance_id)
     return parsed
 

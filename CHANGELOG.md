@@ -2,6 +2,13 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.8.0 Beta 1 (unreleased)
+
+### Fixed
+
+- Swapping two identical monitors between ports, or replacing one with another of the same model, while Winlight ran: each kept the other's identity until Winlight restarted, so they took each other's remembered brightness and names. Windows keeps a monitor's record per port and updates it; Winlight now reads it afresh instead of once per run.
+- Two of Windows' power notifications in a row could be taken for one repeated message, and the second dropped: for example the built-in display's new level straight after the charger is plugged in or unplugged, which "Keep brightness when plugging in or unplugging" relies on. Shown with Windows' own message path on the test laptop; whether Windows does this by itself hasn't been seen.
+
 ## 0.7.5 Beta 1 (2026-10-30)
 
 ### Added

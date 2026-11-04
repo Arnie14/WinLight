@@ -494,3 +494,34 @@ def test_an_sdr_brightness_set_reads_back_as_the_same_percent(monkeypatch, perce
 def test_no_sdr_brightness_reported_is_none_not_zero(monkeypatch):
     monkeypatch.setattr(win32, "_user32", FakeDisplayConfig(white_level=0), raising=False)
     assert win32.get_sdr_white_level(SDR_TARGET) is None
+
+
+# --- Identity from the EDID Windows stores -------------------------------------------------------
+
+
+@windows_only
+def test_a_monitor_swapped_for_an_identical_one_is_read_again(monkeypatch):
+    """Windows keeps a monitor's instance id per port, and replaces the EDID
+    stored under it when another monitor of the same model is plugged in
+    there. Reading it once per run (a cache) kept the first monitor's serial:
+    two identical monitors swapped between ports took each other's settings
+    until Winlight restarted."""
+    import winreg
+
+    from nightlight.core import edid as edid_module
+
+    stored = {"EDID": edid_module.build("DEL", 0x41A2, 0, "DELL U2720Q", "AAA111")}
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(winreg, "OpenKey", lambda *args: Key())
+    monkeypatch.setattr(winreg, "QueryValueEx", lambda key, name: (stored[name], winreg.REG_BINARY))
+    instance = r"DISPLAY\DEL41A2\5&1a2b3c&0&UID4352"
+    assert win32.read_edid(instance).serial == "AAA111"
+    stored["EDID"] = edid_module.build("DEL", 0x41A2, 0, "DELL U2720Q", "BBB222")  # the other one, on this port now
+    assert win32.read_edid(instance).serial == "BBB222"

@@ -292,3 +292,57 @@ def test_power_source_changes_are_reported_once_each():
     events.handle(POWER_SOURCE, 1)  # again: no change
     events.handle(POWER_SOURCE, 0)  # plugged in
     assert seen == [1, 0]
+
+
+ONE_BUFFER = r"""
+import ctypes
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QGuiApplication
+from nightlight.hardware import winsystem
+app = QGuiApplication([])
+events = winsystem.SystemEvents()
+seen = []
+for name in ("displayOff", "displayOn"):
+    getattr(events, name).connect(lambda name=name: seen.append(name))
+events.panelBrightness.connect(lambda level: seen.append(f"panel {level}"))
+user32 = ctypes.WinDLL("user32")
+user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t]
+QTimer.singleShot(200, lambda: None)  # Windows' own current-state reports first
+app.processEvents()
+listening = events.listening
+seen.clear()
+data = winsystem._POWERBROADCAST_SETTING()  # one buffer for every message
+def send(guid, value):
+    data.PowerSetting = winsystem._GUID.from_uuid(guid)
+    data.DataLength, data.Data = 4, value
+    user32.SendMessageW(events._hwnd, winsystem.WM_POWERBROADCAST, winsystem.PBT_POWERSETTINGCHANGE, ctypes.addressof(data))
+send(winsystem.GUID_CONSOLE_DISPLAY_STATE, 0)
+send(winsystem.GUID_CONSOLE_DISPLAY_STATE, 1)
+send(winsystem.GUID_VIDEO_BRIGHTNESS, 35)
+send(winsystem.GUID_VIDEO_BRIGHTNESS, 60)
+QTimer.singleShot(200, app.quit)
+app.exec()
+events.close()
+print(listening, ",".join(seen))
+"""
+
+
+@windows_only
+def test_different_notifications_through_one_buffer_all_arrive():
+    """Sent messages all carry the same time, and a power notification's
+    lParam is a buffer's address, which can be the same for the next one
+    (unplugging the charger is followed at once by the panel's new level).
+    Merging repeats by (message, wParam, lParam, time) dropped every
+    notification after the first: merged by what they say now."""
+    import os
+    import subprocess
+    from pathlib import Path
+
+    env = {**os.environ, "QT_QPA_PLATFORM": "windows"}
+    result = subprocess.run([sys.executable, "-c", ONE_BUFFER], capture_output=True, text=True, timeout=60, env=env,
+                            cwd=Path(__file__).resolve().parent.parent)
+    assert result.returncode == 0, result.stderr
+    listening, seen = result.stdout.strip().splitlines()[-1].split(" ", 1)
+    if listening == "False" and os.environ.get("CI"):
+        pytest.skip("Windows didn't register the window for notifications: no interactive desktop on this CI runner")
+    assert seen.split(",")[-3:] == ["displayOn", "panel 35", "panel 60"]

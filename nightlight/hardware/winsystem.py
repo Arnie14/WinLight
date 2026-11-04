@@ -507,9 +507,16 @@ class SystemEvents(QObject):
         # Broadcasts reach every top-level window of the app: take only ours.
         if msg.hWnd != self._hwnd:
             return
-        identity = (msg.message, msg.wParam, msg.lParam, msg.time)
+        setting = data = None
+        if msg.message == WM_POWERBROADCAST and msg.wParam == PBT_POWERSETTINGCHANGE and msg.lParam:
+            setting, data = read_setting(msg.lParam)
+        # A posted message can reach the filter twice. A power notification's
+        # lParam is a buffer's address, which the next one may reuse, and sent
+        # messages share one time: what it says is part of its identity, or a
+        # new notification would be taken for a repeat and dropped.
+        identity = (msg.message, msg.wParam, msg.lParam, msg.time, setting, data)
         if identity == self._last_message:
-            return  # a posted message seen a second time
+            return  # seen a second time
         self._last_message = identity
         if msg.message == WM_HOTKEY:
             # Ours are 1 to MAX_HOTKEY_ID. Anything else (Windows' -1 and -2,
@@ -517,9 +524,6 @@ class SystemEvents(QObject):
             if 0 < msg.wParam <= MAX_HOTKEY_ID:
                 self.hotkeyPressed.emit(int(msg.wParam))
             return
-        setting = data = None
-        if msg.message == WM_POWERBROADCAST and msg.wParam == PBT_POWERSETTINGCHANGE and msg.lParam:
-            setting, data = read_setting(msg.lParam)
         self.handle(classify(msg.message, msg.wParam, setting, data), data)
 
 
