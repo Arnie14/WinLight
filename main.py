@@ -112,7 +112,7 @@ def main() -> int:
         log.info("Asked the running copy to quit" if running else "No running copy to quit")
         return 0
     if not args.allow_multiple and instance.notify_running():
-        log.info("Night Light is already running; asked it to show its panel")
+        log.info("Winlight is already running; asked it to show its panel")
         return 0
 
     # Only the copy that keeps running writes the log file: on Windows, two
