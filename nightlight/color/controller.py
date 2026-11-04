@@ -68,8 +68,14 @@ class NightLightController(QObject):
         clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
         parent: QObject | None = None,
         zone: tzinfo | None = None,
+        start: bool = True,
+        ticks: Callable[[], float] = time.monotonic,
     ) -> None:
+        """`start` False builds it without touching the displays; start()
+        then puts night light on screen (the app starts it once it knows
+        which displays are paused)."""
         super().__init__(parent)
+        self._ticks = ticks  # monotonic seconds, for fades that last their time
         self._gamma = gamma
         self._config = config
         self._clock = clock
@@ -79,6 +85,9 @@ class NightLightController(QObject):
         self._preview: int | None = None  # live preview while dragging a slider
         self._current: int | None = None  # what the displays show now
         self._animation_target: int | None = None
+        self._animation_from = NEUTRAL_KELVIN  # where the fade started, and when, for how long
+        self._animation_started = 0.0
+        self._animation_seconds = 0.0
         self._paused: dict[str, str] = {}  # display -> why night light is paused there
         self._overrides: dict[str, int] = {}  # display -> its own temperature while pausing/resuming
         self._stopped = False  # shut down: the displays are never touched again
@@ -95,6 +104,21 @@ class NightLightController(QObject):
         self._verify_timer.timeout.connect(self.verify)
         if hasattr(gamma, "verify"):
             self._verify_timer.start()
+        if start:
+            self.start()
+
+    def start(self, paused: Mapping[str, str] | None = None) -> None:
+        """Put night light on screen now, at once: no fade-in at start, since
+        at sign-in the screen has been untinted for seconds already. Displays
+        already paused (a fullscreen game in front) start neutral, rather
+        than tinted and then faded back."""
+        if paused and hasattr(self._gamma, "set_override"):
+            self._paused = dict(paused)
+            log.info("Night light paused on %s", ", ".join(paused))
+            if self.target_temperature != NEUTRAL_KELVIN:
+                for display in paused:
+                    self._overrides[display] = NEUTRAL_KELVIN
+                    self._gamma.set_override(display, NEUTRAL_KELVIN)
         self.update()
 
     @property
@@ -252,11 +276,8 @@ class NightLightController(QObject):
 
     def _retarget(self, reapply: bool = False) -> None:
         target = self.target_temperature
-        if self._current is None and target != NEUTRAL_KELVIN and not getattr(self._gamma, "animates", False):
-            # Starting at night: fade in from the neutral screen there is, as when
-            # turning night light on, instead of snapping to the night temperature.
-            self._current = NEUTRAL_KELVIN
-        # Backends that animate on their own (KWin) get the target directly.
+        # Starting (nothing shown yet) sets it at once (see start()); backends
+        # that animate on their own (KWin) get the target directly.
         if self._current is None or getattr(self._gamma, "animates", False) or abs(target - self._current) <= TEMPERATURE_STEP:
             self._animation.stop()
             self._set(target, reapply)
@@ -266,14 +287,24 @@ class NightLightController(QObject):
         self._animation_target = target
         steps = abs(target - self._current) / TEMPERATURE_STEP
         duration = QUICK_ADJUST_MS / (PREVIEW_SPEEDUP if self._preview is not None else 1)
+        self._animation_from, self._animation_started, self._animation_seconds = self._current, self._ticks(), duration / 1000
         self._animation.start(max(1, int(duration / steps)))
 
     def _animation_step(self) -> None:
+        """The temperature this far into the fade, by the clock: a step per
+        tick took far longer than the fade's time when ticks came late
+        (Windows' timers, and setting each display's ramp), 3.8 s for 2 s."""
         target = self._animation_target
         if target is None or self._current is None:
             self._animation.stop()
             return
-        if not self._set(step_towards(self._current, target)) or self._current == target:
+        elapsed = self._ticks() - self._animation_started
+        done = elapsed >= self._animation_seconds
+        start = self._animation_from
+        kelvin = target if done else round(start + (target - start) * elapsed / self._animation_seconds)
+        if kelvin == self._current and not done:
+            return  # the tick came early: nothing new to show yet
+        if not self._set(kelvin) or self._current == target:
             self._animation.stop()
 
     def _set(self, kelvin: int, reapply: bool = False) -> bool:

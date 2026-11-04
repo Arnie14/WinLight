@@ -135,7 +135,9 @@ class NightLightApp:
         )
         self.power_source = PowerSourceKeeper(self.monitors)
         self.brightness_keys = BrightnessKeys(self.monitors, self._hidden_keys, held=self.power_source.settling)
-        self.controller = NightLightController(gamma, self._config.night_light, zone=zone)
+        # Built without touching the displays; started below, once pausing has
+        # looked at the app in front.
+        self.controller = NightLightController(gamma, self._config.night_light, zone=zone, start=False)
         self.commands = CommandHandler(self.monitors, self.controller, lambda: self._config, gamma)
         self._settings: SettingsWindow | None = None
         self._hints_path = config_path.with_name("hints.json")
@@ -156,9 +158,11 @@ class NightLightApp:
                                              media=lambda: winsystem.display_required() or winsystem.exclusive_fullscreen(),
                                              held=self._pausing_held)
         self._exemptions.pausedChanged.connect(self.controller.set_paused)
-        # Its first check ran before this connection: an exempt or fullscreen
-        # app already in front at start pauses night light too.
-        self.controller.set_paused(self._exemptions.paused)
+        # Night light on screen now, at once, before the tray and the first
+        # window: Windows' set-up of a process's first window took up to 0.9 s
+        # on the test laptop, and the start-up fade 3.8 s more. A display paused
+        # already (a fullscreen game in front: the watcher's first check) starts neutral.
+        self.controller.start(self._exemptions.paused)
         self._apply_preferences(self._config)
 
         self.tray: Tray | None = None

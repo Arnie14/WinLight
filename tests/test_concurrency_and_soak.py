@@ -279,7 +279,7 @@ REVERSED = ["tests/test_shortcuts.py", "tests/test_shortcut_safeguards.py", "tes
 
 
 @pytest.mark.skipif(bool(os.environ.get("WINLIGHT_INNER_RUN")), reason="the run inside this test")
-def test_the_tests_pass_in_reverse_order_too():
+def test_the_tests_pass_in_reverse_order_too(tmp_path):
     """A test that only passes after another (shared state, a leftover window,
     a patched module) passes in the usual order and hides a bug. Ten modules
     with the most shared state run here backwards, test by test."""
@@ -287,6 +287,9 @@ def test_the_tests_pass_in_reverse_order_too():
                                cwd=ROOT, capture_output=True, text=True, timeout=300)
     ids = [line for line in collected.stdout.splitlines() if "::" in line]
     assert len(ids) > 300, collected.stdout[-2000:]
-    result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *reversed(ids)], cwd=ROOT,
+    # From a file (pytest's @file): the ids outgrew Windows' 32,767-character command line.
+    arguments = tmp_path / "reversed.txt"
+    arguments.write_text("\n".join(reversed(ids)), encoding="utf-8")
+    result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"@{arguments}"], cwd=ROOT,
                             capture_output=True, text=True, timeout=900, env={**os.environ, "WINLIGHT_INNER_RUN": "1"})
     assert result.returncode == 0, result.stdout[-4000:]

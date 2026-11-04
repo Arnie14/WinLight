@@ -56,9 +56,9 @@ def test_large_change_is_animated_in_steps():
         if gamma.applied and gamma.applied[-1] == 4500:
             break
         QTest.qWait(10)
-    assert gamma.applied[0] == 6450
-    assert gamma.applied[-1] == 4500
-    assert len(gamma.applied) == 40  # (6500 - 4500) / 50
+    assert 4500 < gamma.applied[0] < 6500 and gamma.applied[-1] == 4500
+    assert gamma.applied == sorted(gamma.applied, reverse=True)  # one way, warmer and warmer
+    assert len(gamma.applied) <= 40  # at most (6500 - 4500) / 50 steps; fewer when ticks come late
 
 
 def test_backend_that_animates_itself_gets_target_directly():
@@ -132,12 +132,44 @@ class PausingGamma(RecordingGamma):
 ALWAYS_ON = NightLightConfig(enabled=True, mode=Mode.ALWAYS, night_temperature=3500)
 
 
-def test_starting_at_night_fades_in_instead_of_snapping():
+def test_starting_at_night_sets_night_light_at_once():
+    """At sign-in the screen has been untinted for seconds already; a fade-in
+    on top took another 3.8 s on the test laptop. Starting sets it at once,
+    before the app has built anything else (nothing waits for the event loop)."""
     gamma = RecordingGamma()
     controller = make(gamma, ALWAYS_ON)
-    assert gamma.applied == [] or gamma.applied[0] > 6000  # starts near neutral
-    QTest.qWait(1200)
-    assert gamma.applied[-1] == 3500 and len(gamma.applied) > 10
+    assert gamma.applied == [3500]
+    controller.shutdown()
+
+
+def test_turning_night_light_on_still_fades():
+    gamma = RecordingGamma()
+    controller = make(gamma)
+    controller.set_config(ALWAYS_ON)
+    assert gamma.applied == []  # on a timer, not at once
+    controller.shutdown()
+
+
+def test_a_display_paused_at_start_is_never_tinted():
+    """A fullscreen game already in front when Winlight starts: that display
+    starts neutral, rather than tinted at once and then faded back."""
+    gamma = PausingGamma()
+    events = []
+    gamma.apply = lambda kelvin: events.append(("apply", kelvin))
+    gamma.set_override = lambda display, kelvin: events.append(("override", display, kelvin))
+    controller = NightLightController(gamma, ALWAYS_ON, clock=lambda: NOON, start=False)
+    assert events == []  # built without touching the displays
+    controller.start({"DISPLAY2": "game.exe"})
+    assert events[:2] == [("override", "DISPLAY2", 6500), ("apply", 3500)]  # neutral there first
+    assert controller.paused == {"DISPLAY2": "game.exe"}
+    controller.shutdown()
+
+
+def test_paused_at_start_with_night_light_off_touches_nothing():
+    gamma = PausingGamma()
+    controller = NightLightController(gamma, NightLightConfig(), clock=lambda: NOON, start=False)
+    controller.start({"DISPLAY2": "game.exe"})
+    assert gamma.overrides == {} and gamma.applied == []
     controller.shutdown()
 
 
@@ -342,4 +374,25 @@ def test_the_regular_check_catches_a_reset_without_any_event(monkeypatch):
     gdi.windows_resets()
     QTest.qWait(250)
     assert gdi.tinted
+    controller.shutdown()
+
+
+
+def test_a_fade_lasts_as_long_as_it_should_however_slow_each_step(monkeypatch):
+    """The fade moved a fixed 50 K per timer tick: with ticks late (Windows'
+    timers, and each step setting and reading back every display's ramp) a
+    2 s fade took 3.8 s on the test laptop. It follows the clock now."""
+    import time
+
+    gamma = RecordingGamma()
+    controller = make(gamma)
+    started = time.monotonic()
+    controller.set_config(NightLightConfig(enabled=True, mode=Mode.ALWAYS, night_temperature=2000))
+    for _ in range(300):
+        if gamma.applied and gamma.applied[-1] == 2000:
+            break
+        QTest.qWait(10)
+    took = time.monotonic() - started
+    assert gamma.applied[-1] == 2000
+    assert took < controller_module.QUICK_ADJUST_MS / 1000 + 0.4, f"{took:.2f} s"  # 90 steps of 50 K wouldn't fit
     controller.shutdown()

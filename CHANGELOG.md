@@ -4,6 +4,11 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 ## 0.8.0 Beta 1 (unreleased)
 
+### Changed
+
+- **Night light is on screen at once when Winlight starts**, about 0.5 s after starting rather than 5 s on the test laptop. It used to wait for the app to be built (Windows' set-up of the first window takes up to a second) and then fade in over almost 4 seconds; at sign-in the screen had been bright for long enough already. Turning night light on, the schedule and resuming still fade. A display already showing a fullscreen game or video at start stays untinted from the beginning.
+- **Fades last as long as they should.** A 2-second change of temperature took nearly 4 seconds when the computer was busy, since it moved a fixed step at each timer tick; it follows the clock now.
+
 ### Fixed
 
 - Swapping two identical monitors between ports, or replacing one with another of the same model, while Winlight ran: each kept the other's identity until Winlight restarted, so they took each other's remembered brightness and names. Windows keeps a monitor's record per port and updates it; Winlight now reads it afresh instead of once per run.

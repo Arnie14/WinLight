@@ -126,6 +126,7 @@ Options (Settings > Brightness):
 Settings > Night Light, Schedule **Always on**:
 
 - [ ] Applying fades every display warm over about 2 s; dragging a temperature previews it live.
+- [ ] With night light on, quit Winlight and start it again: night light is back at full strength at once, with no fade-in. With a fullscreen video or game in front at the time, that display stays untinted.
 - [ ] Drag the night temperature fully warm. If Windows refuses that, each display stops at the limit `--probe` found, the log has one warning about `GdiIcmGammaRange`, and the Night row names each limited display ("3300 K (Windows limit)"). Back within the limit, the note disappears.
 - [ ] Optional: **Unlock…** under the Night row, and accept the administrator prompt: "Windows' color limit" says unlocked, in effect after signing out, and `GdiIcmGammaRange` (DWORD `256` under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ICM`) is set. Sign out and in: warmer temperatures now work. **Lock again…** removes the value the same way. Declining the prompt changes nothing.
 - [ ] Quit from the tray menu: the displays return to normal colors. A calibrated display returns to its calibrated look, not a flat one.

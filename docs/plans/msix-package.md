@@ -192,7 +192,7 @@ Options:
 |---|---|---|---|
 | First in the Run key | About 2 s on the test laptop (the apps ahead of it) | Not possible cleanly | The order is the values' creation order; moving up means deleting and re-creating other apps' entries, which no app should do |
 | A scheduled task at sign-in, instead of the Run key | Expected 5–7 s (to verify: the Task Scheduler log was off) | Installer and `autostart.py` rewritten (below) | Installer build only. Not possible in the Store package (it would outlive the uninstall) |
-| Put night light on screen before display detection | Up to about 0.8 s | Small: reorder start-up | Both builds |
+| Put night light on screen before display detection | Up to about 0.8 s | Small: reorder start-up | Both builds. **Done** in 0.8.0 Beta 1, and more: detection never held it back; the app's build (up to 0.9 s for Windows' first window) and a 3.8 s fade-in did. Full night light now 0.47 s after start, from 5.2 s |
 | Fewer imports at start | 0.1–0.3 s | Small | Both builds |
 
 No option guarantees no bright moment. Windows shows the sign-in animation and starts the desktop before any app runs, and can reset gamma ramps while it sets up the displays. A scheduled task narrows the untinted time from about 9 s to an expected 2–3 s.
