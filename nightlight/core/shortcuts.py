@@ -124,7 +124,7 @@ def cycle_levels(text: str) -> tuple[int, ...]:
     levels: list[int] = []
     for part in text.replace(";", ",").replace(" ", ",").split(","):
         part = part.strip().removesuffix("%")
-        if not part.isdigit():
+        if not part.isdecimal():  # not isdigit(): "²" is a digit to it, but not to int()
             continue
         level = min(100, int(part))
         if not levels or levels[-1] != level:

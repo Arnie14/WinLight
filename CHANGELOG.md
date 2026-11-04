@@ -11,6 +11,7 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - After a detection that didn't finish in time, Winlight waited for every stuck call to return before detecting again, not only for that detection. With one display's call stuck for good, no detection ran again, and every display stayed out of reach until Winlight was restarted.
 - Quitting was one sequence of steps: if one had failed, the steps after it were skipped, putting the colors back among them, and the screen stayed tinted after quitting until the next start. Each step now runs on its own.
 - Report a Problem's Show File started Explorer by its bare name, which Windows looks for in the app's and the current folder first; it is now started from the Windows folder, as reg.exe is from System32. A test checks that every program is started by its full path.
+- A "Cycle brightness through" shortcut whose levels held a character that looks like a digit but isn't one ("²", which AltGr+2 types on a German keyboard) raised an error in Settings, and once saved made the settings file unreadable at the next start, so Winlight started with default settings. Such characters are now left out of the levels. `winlight-cli --display ²` now says no display matches, rather than failing.
 
 ## 0.7.5 Beta 1 (2026-10-30)
 

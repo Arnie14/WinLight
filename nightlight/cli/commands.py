@@ -159,7 +159,7 @@ class CommandHandler:
         selector = str(selector).strip()
         if selector.lower() == ALL:
             return [(n, m) for n, m in numbered if include_hidden or not self._hidden(m)]
-        if selector.isdigit():
+        if selector.isdecimal():  # not isdigit(): "²" is a digit to it, but not to int()
             matches = [(n, m) for n, m in numbered if n == int(selector)]
         else:
             wanted = selector.lower()

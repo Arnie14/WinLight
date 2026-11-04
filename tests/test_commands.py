@@ -315,3 +315,17 @@ def test_panel_requests_are_built_alone_or_after_a_change():
     assert cli.requested(args) and cli.build_request(args) == {"command": "panel", "panel": True}
     args = parser.parse_args(["--set", "+10", "--panel"])
     assert cli.build_request(args) == {"command": "set", "value": "+10", "display": "all", "panel": True}
+
+
+@pytest.mark.parametrize("display", ["²", "①", "1²"])
+def test_a_display_given_as_a_character_that_only_looks_like_a_number_matches_nothing(handler, display):
+    """isdigit() is true for "²", which int() rejects: the request failed with
+    an error in the log instead of saying no display matches."""
+    commands, _monitors, _controller = handler
+    answer = commands.handle({"command": "get", "display": display})
+    assert not answer["ok"] and "No display matches" in answer["output"]
+
+
+def test_a_number_in_other_digits_is_still_a_number(handler):
+    commands, _monitors, _controller = handler
+    assert commands.handle({"command": "get", "display": "١"}) == commands.handle({"command": "get", "display": "1"})  # Arabic-Indic one

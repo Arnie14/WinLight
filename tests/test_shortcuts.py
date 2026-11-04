@@ -737,3 +737,14 @@ def test_only_the_first_of_two_rows_with_the_same_keys_is_said_to_work():
     editor.set_shortcuts(saved)
     editor.show_status({"Ctrl+Alt+Up": WORKS}.get, saved)
     assert [row.status.text() for row in editor.rows] == [WORKS, DUPLICATE]
+
+
+def test_cycle_levels_typed_with_characters_that_only_look_like_numbers_are_left_out():
+    """AltGr+2 types "²" on a German keyboard; isdigit() took it for a number
+    and int() then failed, inside the shortcut editor and wherever the
+    levels were read."""
+    from nightlight.core.shortcuts import cycle_levels
+
+    assert cycle_levels("100, ², 50") == (100, 50)
+    assert cycle_levels("①, 30") == (30,)
+    assert cycle_levels("١٠٠, 10") == (100, 10)  # other scripts' decimal digits are numbers
