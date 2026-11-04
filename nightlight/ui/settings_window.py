@@ -1470,10 +1470,11 @@ def third_party_notices() -> Path | None:
 
 def _open_log_folder() -> None:
     from nightlight import config
+    from nightlight.system.packaging_info import visible_path
 
     folder = config.log_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(visible_path(folder))))  # in the Store package, where Windows put it
 
 
 def _location_combo() -> QComboBox:

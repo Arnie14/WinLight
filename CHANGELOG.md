@@ -16,6 +16,13 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 - With "Follow the laptop's brightness keys" on, the check of the built-in display every 2 seconds never started after a normal start: it was turned on before the first detection had found the display. Only Windows' own notification was left, which some laptops don't send. It now starts once the display is found.
 - Crash safe mode's marker ("talking to this display now") wasn't flushed to the disk, so a crash that took Windows down with it lost the marker, and the display behind it was talked to again at the next start. It is written like every other file now.
 
+### For developers
+
+- The audit of the code for 0.8.0 is recorded in [docs/history/audit-0.8.0.md](docs/history/audit-0.8.0.md).
+- `tests/test_settings_properties.py`: settings files with anything in any field must cost at most the setting concerned, never all of them.
+- Groundwork for the Microsoft Store package, with no change to these builds: `system/packaging_info.py` tells whether Winlight runs from a package, and `visible_path()` gives the path Explorer and other programs see there (Windows redirects a package's app data). Report a Problem's Show File, Open log folder and the printed paths use it, and a test rule makes every function that hands a path to another program use it.
+- A new test rule: every program is started by its full path.
+
 ## 0.7.5 Beta 1 (2026-10-30)
 
 ### Added

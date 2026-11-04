@@ -45,6 +45,7 @@ from PySide6.QtGui import QGuiApplication
 from nightlight import APP_NAME, __version__, config
 from nightlight.color.exemptions import describe as describe_pause
 from nightlight.support.privacy import scrub
+from nightlight.system.packaging_info import visible_path
 
 log = logging.getLogger(__name__)
 
@@ -215,5 +216,5 @@ def write_bundle(sources: Sources, folder: Path | None = None) -> tuple[Path, st
                 if file.is_file() and (config.is_log_file(file.name) or file.name == "probe.txt"):
                     # Scrubbed again: lines from older versions weren't.
                     bundle.writestr(f"logs/{file.name}", scrub(file.read_text(encoding="utf-8", errors="replace")))
-    log.info("Diagnostics saved to %s", path)
+    log.info("Diagnostics saved to %s", visible_path(path))
     return path, text

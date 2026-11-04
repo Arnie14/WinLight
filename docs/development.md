@@ -132,7 +132,8 @@ nightlight/
   color/                    controller (night light on the displays), exemptions (pausing per display)
   system/                   autostart, single_instance (one copy, and the command-line pipe), watcher (display
                             changes, sleep), shortcuts (registering and running them), updates (the optional
-                            update check), apps (installed apps from the Start menu, for the app lists)
+                            update check), apps (installed apps from the Start menu, for the app lists),
+                            packaging_info (whether it runs from the Store package, and the paths others see)
   support/                  diagnostics (Report a Problem), privacy (scrubbing), compat (compatibility report),
                             probe (--probe)
   cli/                      client (winlight-cli) and commands (what the app does for it)

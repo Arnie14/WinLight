@@ -18,6 +18,7 @@ from nightlight.cli import client as cli
 from nightlight.gc_guard import MainThreadGarbageCollector
 from nightlight.hardware import BACKENDS, create_backends
 from nightlight.support.privacy import ScrubbingFormatter
+from nightlight.system.packaging_info import visible_path
 from nightlight.system.single_instance import SingleInstance
 from nightlight.ui import icons
 
@@ -120,7 +121,7 @@ def main() -> int:
     # rotating it fails while another process has it open. Second launches
     # and --quit are logged by the running copy when they reach it.
     log_file = add_log_file()
-    log.info("Log file: %s", log_file or "none")
+    log.info("Log file: %s", visible_path(log_file) if log_file else "none")
     brightness, gamma = create_backends(args.backend)
     night_light = NightLightApp(app, brightness, gamma, args.config or config.default_path())
     instance.activated.connect(night_light.show_panel)
@@ -176,7 +177,7 @@ def print_report(backend: str, out_dir: Path | None) -> int:
         path = out_dir / "compatibility.txt"
         try:
             path.write_text(report, encoding="utf-8")
-            print(f"Saved to {path}")
+            print(f"Saved to {visible_path(path)}")
         except OSError as exc:
             print(f"Could not save the report to {path}: {exc}")
     return 0

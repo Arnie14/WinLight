@@ -49,6 +49,7 @@ from nightlight.hardware.gamma import GammaBackend
 from nightlight.hardware.safe_mode import SafeMode
 from nightlight.support import compat, diagnostics
 from nightlight.system import autostart
+from nightlight.system.packaging_info import visible_path
 from nightlight.system.shortcuts import ShortcutService
 from nightlight.system.updates import UpdateChecker
 from nightlight.system.watcher import DisplayWatcher
@@ -357,7 +358,8 @@ class NightLightApp:
         if request.get("command") == "diagnostics":
             try:
                 path, _text = diagnostics.write_bundle(self._diagnostics_sources())
-                reply({"ok": True, "output": str(path), "data": {"path": str(path)}})
+                shown = str(visible_path(path))  # a path the terminal can open, packaged too
+                reply({"ok": True, "output": shown, "data": {"path": shown}})
             except OSError as exc:
                 reply({"ok": False, "output": f"Could not save the diagnostics: {exc}"})
             return
@@ -709,6 +711,7 @@ def _save_hints(path: Path, hints: set[str]) -> None:
 
 def _reveal(path: Path) -> None:
     """Show a file in Explorer (selected), or its folder elsewhere."""
+    path = visible_path(path)  # in the Store package, where Windows really put it
     if sys.platform == "win32":
         # By its full path: by bare name, Windows looks in the app's folder and
         # the current folder first, where anyone could have left an explorer.exe.

@@ -78,7 +78,7 @@ The app keeps reading and writing `%LOCALAPPDATA%\WinLight` as now; Windows redi
 - Report a Problem's "Show File" runs `explorer /select,<path>`: Explorer would look in the real folder and find nothing. Translate to `%LOCALAPPDATA%\Packages\<family name>\LocalCache\Local\WinLight\…` when packaged.
 - Settings > General > Log files > Open folder, the third-party notices, and the dialog text that names the Reports folder: same translation.
 - `--report`, `--diagnostics` and the log line "Log file: …" print paths: print the real one.
-- Decide: move the data folder translation into one function (`config.visible_path(path)`) and use it everywhere a path leaves the app.
+- Decided: one function, `system/packaging_info.visible_path()` (in `system/`, since `config` may not call Windows), used everywhere a path leaves the app. It returns the redirected path only when it exists, since a file from before the package was installed is read in place until the package writes it.
 
 Moving from the installer build to the Store build:
 
@@ -206,8 +206,8 @@ The scheduled task, for the signed installer build:
 
 ## Order of work
 
-1. `packaging_info.is_packaged()`, with tests faking both answers.
-2. The visible-path translation (section 3), then Report a Problem, Open folder and the printed paths through it.
+1. `packaging_info.is_packaged()`, with tests faking both answers. **Done** in 0.8.0 Beta 1.
+2. The visible-path translation (section 3), then Report a Problem, Open folder and the printed paths through it. **Done** in 0.8.0 Beta 1: `packaging_info.visible_path()`, and a test rule that every function handing a path to another program uses it.
 3. Hide "Unlocking warmer colors" and "Check for updates" when packaged; skip `set_app_id()`; add `RegisterApplicationRestart`.
 4. StartupTask support in `autostart.py` (decide the WinRT route first), with the five states and the Windows Settings link.
 5. The "other Winlight is installed" check.

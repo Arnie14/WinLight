@@ -671,3 +671,19 @@ def test_showing_a_file_runs_windows_own_explorer_by_its_full_path(monkeypatch, 
     [args] = started
     assert Path(args[0]) == Path(os.environ["SYSTEMROOT"]) / "explorer.exe"
     assert args[1:] == ["/select,", str(tmp_path / "report.zip")]
+
+
+@pytest.mark.skipif(__import__("sys").platform != "win32", reason="Explorer is Windows'")
+def test_show_file_in_the_store_package_points_explorer_where_windows_put_the_report(monkeypatch, tmp_path):
+    from nightlight.system import packaging_info
+
+    local = tmp_path / "Local"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setattr(packaging_info, "_family", "Winlight_8wekyb3d8bbwe")
+    redirected = local / "Packages" / "Winlight_8wekyb3d8bbwe" / "LocalCache" / "Local" / "WinLight" / "Reports" / "report.zip"
+    redirected.parent.mkdir(parents=True)
+    redirected.write_bytes(b"zip")
+    started = []
+    monkeypatch.setattr(app_module.subprocess, "Popen", lambda args, **kwargs: started.append(args))
+    app_module._reveal(local / "WinLight" / "Reports" / "report.zip")  # where the app itself wrote it
+    assert started[0][2] == str(redirected)

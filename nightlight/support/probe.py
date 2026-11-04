@@ -24,6 +24,7 @@ from PySide6.QtGui import QGuiApplication
 
 from nightlight import __version__
 from nightlight.support.privacy import scrub
+from nightlight.system.packaging_info import visible_path
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def run(backend: str, out_dir: Path | None) -> int:
         path = out_dir / "probe.txt"
         try:
             path.write_text(report, encoding="utf-8")
-            print(f"Saved to {path}")
+            print(f"Saved to {visible_path(path)}")
         except OSError as exc:
             print(f"Could not save the report to {path}: {exc}")
     return 0

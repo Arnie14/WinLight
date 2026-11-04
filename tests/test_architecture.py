@@ -349,6 +349,38 @@ def rule_bare_program_names(trees) -> list[str]:
     return wrong
 
 
+# Opening one of the app's own files in another program: allowed without
+# visible_path only where the file isn't in the data folder.
+SHOWN_AS_IS = {
+    ("nightlight/ui/settings_window.py", "_general_page"): "the third-party notices, in the install folder, which isn't redirected",
+}
+
+
+def rule_paths_shown_to_others(trees) -> list[str]:
+    """Functions handing a local path to another program (a file URL, or
+    Explorer) without visible_path: in the Store package, Windows keeps the
+    app's files elsewhere, and Explorer would find nothing."""
+    wrong = []
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            text = ast.unparse(node)
+            if not (ast.unparse(node.func).endswith("fromLocalFile") or (ast.unparse(node.func) == "subprocess.Popen" and "explorer" in text)):
+                continue
+            function = enclosing_function(node)
+            name = function.name if function is not None else "<module>"
+            if (rel(path), name) in SHOWN_AS_IS:
+                continue
+            if function is None or "visible_path" not in ast.unparse(function):
+                wrong.append(f"{where(path, node)} hands a path to another program without visible_path")
+    return wrong
+
+
+def test_paths_handed_to_other_programs_are_where_windows_keeps_them():
+    assert not rule_paths_shown_to_others(TREES)
+
+
 def test_programs_are_started_by_their_full_path():
     """By bare name, Windows looks for the program in the app's folder and the
     current folder before System32, where anyone could have left one with
@@ -507,6 +539,7 @@ BAD = {
     rule_frozen: "from dataclasses import dataclass\n@dataclass\nclass Settings:\n    x: int = 1\n",
     rule_no_capabilities_string: "import ctypes\nd = ctypes.WinDLL('dxva2')\nd.CapabilitiesRequestAndCapabilitiesReply(1, None, 0)\n",
     rule_bare_program_names: "import subprocess\nsubprocess.Popen(['explorer', '/select,', 'x'])\n",
+    rule_paths_shown_to_others: "def show(folder):\n    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))\n",
     rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
 }
 
