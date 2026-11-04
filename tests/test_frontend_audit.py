@@ -147,8 +147,10 @@ def test_every_welcome_screen_control_has_a_name_a_screen_reader_can_say():
     night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
     controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
     window = WelcomeWindow(controller, lambda: AppConfig(night_light), programs=lambda: {"flux.exe"})
-    window.set_windows_night_light(True)  # a row with a button
+    window.set_windows_night_light(True)
+    window.refresh()  # as the app does before showing it: a row with a button
     try:
+        assert "Windows Night Light is on" in window.found
         assert unnamed(window) == []
     finally:
         window.close()

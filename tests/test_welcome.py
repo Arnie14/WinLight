@@ -87,6 +87,7 @@ def test_the_window_shows_its_findings_and_looks_again_when_things_change():
     window = WelcomeWindow(controller, lambda: AppConfig(night_light, displays=(DisplayPrefs("SAM7136", "TV"),)), monitors,
                            programs=lambda: set(programs), open_settings=lambda: opened.append(True))
     try:
+        window.show()  # it looks again only while shown (see the next test)
         assert window.found == ["f.lux is running"]
         window.set_windows_night_light(True)
         assert window.found == ["Windows Night Light is on", "f.lux is running"]
@@ -98,7 +99,6 @@ def test_the_window_shows_its_findings_and_looks_again_when_things_change():
         monitors.monitors = [PANEL]
         monitors.monitorsChanged.emit(monitors.monitors)
         assert window.found == ["Nothing here clashes with Winlight"]
-        window.show()
         window.settings.click()
         assert opened == [True] and not window.isVisible()
     finally:
@@ -188,6 +188,27 @@ def test_looking_again_while_shown_leaves_room_for_everything():
         QApplication.processEvents()
         assert window.card.isVisible()
         assert window.height() >= window.layout().totalHeightForWidth(WIDTH)  # room for all of it
+    finally:
+        window.close()
+        controller.shutdown()
+
+
+def test_a_closed_welcome_screen_doesnt_look_at_anything():
+    """The app keeps it after it's closed; each detection (waking, a display
+    plugged in) rebuilt it and listed every program while nobody saw it."""
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    monitors = Monitors([PANEL])
+    looked = []
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), monitors, programs=lambda: looked.append(1) or set())
+    try:
+        looked.clear()
+        monitors.monitorsChanged.emit([PANEL])  # closed (never shown)
+        window.set_windows_night_light(True)
+        assert looked == []
+        window.show()
+        window.refresh()  # shown again: it looks then
+        assert looked and window.found == ["Windows Night Light is on"]
     finally:
         window.close()
         controller.shutdown()

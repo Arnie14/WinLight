@@ -137,13 +137,18 @@ class WelcomeWindow(QWidget):
         buttons.addWidget(self.settings)
         layout.addLayout(buttons)
         if monitors is not None:
-            monitors.monitorsChanged.connect(self.refresh)
+            monitors.monitorsChanged.connect(self._on_monitors_changed)
         self.refresh()
+
+    def _on_monitors_changed(self, *_args) -> None:
+        if self.isVisible():  # closed, nobody sees it: refresh() runs when it's shown again
+            self.refresh()
 
     def set_windows_night_light(self, on: bool | None) -> None:
         if on != self._windows_night_light:
             self._windows_night_light = on
-            self.refresh()
+            if self.isVisible():
+                self.refresh()
 
     def refresh(self, *_args) -> None:
         """Look again: displays found since, a tool quit, Windows Night Light turned off."""
