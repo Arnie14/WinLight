@@ -105,9 +105,9 @@ class IdleDimmer(QObject):
                 target = max(monitor.minimum, self._level)
                 if current is not None and target < current:
                     levels[monitor.key] = target
-            elif not monitor.hdr and not monitor.internal and monitor.display and self._gamma is not None:
-                if monitor.display not in software:  # cloned displays share one ramp
-                    software.append(monitor.display)
+            elif (not monitor.hdr and not monitor.internal and monitor.display and self._gamma is not None
+                  and monitor.display not in software):  # cloned displays share one ramp: once
+                software.append(monitor.display)
         return levels, software
 
     def configure(self, enabled: bool, minutes: int, level: int) -> None:
