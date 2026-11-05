@@ -734,3 +734,44 @@ def test_show_file_in_the_store_package_points_explorer_where_windows_put_the_re
     monkeypatch.setattr(app_module.subprocess, "Popen", lambda args, **kwargs: started.append(args))
     app_module._reveal(local / "WinLight" / "Reports" / "report.zip")  # where the app itself wrote it
     assert started[0][2] == str(redirected)
+
+
+def quit_lines(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "nightlight.app"]
+
+
+def test_quitting_says_why_and_that_it_finished(start, monkeypatch, caplog):
+    """Testers' logs ended without a word: a clean quit looked like a crash
+    or a power cut until Windows' own event log was checked."""
+    import logging
+
+    night_light, _ = start(GeneralConfig())
+    monkeypatch.setattr(night_light, "_qapp", type("App", (), {"quit": staticmethod(night_light._shutdown)}))
+    with caplog.at_level(logging.INFO, logger="nightlight.app"):
+        night_light.tray.quitRequested.emit()
+    lines = quit_lines(caplog)
+    assert "Quitting: Quit in the tray menu" in lines
+    assert [line for line in lines if line.startswith("Quit cleanly in ")]
+
+
+def test_windows_ending_the_session_is_logged_as_why_it_quit(start, caplog):
+    import logging
+
+    night_light, _ = start(GeneralConfig())
+    with caplog.at_level(logging.INFO, logger="nightlight.app"):
+        night_light.system_events.endingSession.emit()
+    assert "Quitting: Windows is ending the session (signing out, restarting or shutting down)" in quit_lines(caplog)
+
+
+def test_a_quit_step_that_fails_is_named_at_the_end(start, monkeypatch, caplog):
+    import logging
+
+    def broken():
+        raise RuntimeError("broken")
+
+    night_light, _ = start(GeneralConfig())
+    monkeypatch.setattr(night_light.scheduler, "shutdown", broken)
+    with caplog.at_level(logging.INFO, logger="nightlight.app"):
+        night_light._shutdown()
+    [last] = [line for line in quit_lines(caplog) if line.startswith("Quit ")]
+    assert "but stopping the brightness schedule failed" in last

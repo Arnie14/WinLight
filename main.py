@@ -7,6 +7,7 @@ import os
 import signal
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
@@ -126,20 +127,21 @@ def main() -> int:
     night_light = NightLightApp(app, brightness, gamma, args.config or config.default_path())
     instance.activated.connect(night_light.show_panel)
     instance.requestReceived.connect(night_light.handle_request)
-    instance.quitRequested.connect(app.quit)
+    instance.quitRequested.connect(night_light.quit_when_asked)
     app.aboutToQuit.connect(instance.close)
-    quit_on_signals(app)
+    quit_on_signals(app, night_light.quit)
     exit_code = app.exec()
     if night_light.monitors.hung:
         # A display's DDC/CI call never returned and can't be interrupted;
         # don't wait for it (night light was already reset, settings saved).
+        log.warning("Exiting without waiting for a display call that never returned")
         logging.shutdown()
         os._exit(exit_code)
     del night_light  # kept alive until here: Qt objects it owns must outlive the event loop
     return exit_code
 
 
-def quit_on_signals(app: QApplication) -> None:
+def quit_on_signals(app: QApplication, quit_app: Callable[[str], None]) -> None:
     """Quit cleanly on Ctrl+C, Ctrl+Break, closing the console or SIGTERM,
     so night light and dimming are undone rather than left on the screen.
 
@@ -147,8 +149,7 @@ def quit_on_signals(app: QApplication) -> None:
     is native code, so a timer gives Python a moment regularly."""
 
     def request_quit(signum, _frame) -> None:
-        log.info("Received signal %d; quitting cleanly", signum)
-        app.quit()
+        quit_app(f"signal {signum} (Ctrl+C, the console closing, or a request to end)")
 
     for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
         if (number := getattr(signal, name, None)) is not None:

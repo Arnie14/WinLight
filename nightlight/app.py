@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -106,6 +107,7 @@ class NightLightApp:
         first_start = not config_path.exists()  # no settings yet: a new install, not an upgrade
         self._config = config.load(config_path)
         self._shut_down = False
+        self._quit_reason = ""  # why it is quitting, for the log
         log.info("Settings file: %s", config_path)
         zone = system_zone()
         log.info("Time zone: %s", "known" if zone is not None else "unknown; using the current UTC offset")
@@ -185,7 +187,7 @@ class NightLightApp:
             self.tray.configureRequested.connect(self.show_settings)
             self.tray.diagnosticsRequested.connect(self.report_problem)
             self.tray.messageClicked.connect(self._on_tray_message_clicked)
-            self.tray.quitRequested.connect(qapp.quit)
+            self.tray.quitRequested.connect(self._quit_from_tray)
             self.tray.show()
             qapp.setQuitOnLastWindowClosed(False)
         else:
@@ -197,7 +199,7 @@ class NightLightApp:
         # Windows: gamma ramps are reset then, night light should be back
         # before anyone notices, and nothing goes to sleeping displays.
         self.system_events = winsystem.SystemEvents(qapp)
-        self.system_events.endingSession.connect(self._shutdown)  # signing out: there may be no later chance
+        self.system_events.endingSession.connect(self._end_session)  # signing out: there may be no later chance
         self.system_events.unlocked.connect(self._on_unlocked)
         self.system_events.displayChanged.connect(self.controller.reapply_now)  # at once; detection follows once settled
         self.system_events.panelBrightness.connect(self._on_panel_brightness)
@@ -265,8 +267,12 @@ class NightLightApp:
     def show_welcome(self) -> None:
         """The welcome screen: at the first start, and from Settings > General."""
         if self._welcome is None:
-            self._welcome = WelcomeWindow(self.controller, lambda: self._config, self.monitors,
-                                          programs=winsystem.running_programs, open_settings=self.show_settings)
+            self._welcome = WelcomeWindow(
+                self.controller, lambda: self._config, self.monitors, programs=winsystem.running_programs,
+                open_settings=self.show_settings,
+                tray_hidden=winsystem.tray_icon_hidden if self.tray is not None else (lambda: None),
+                starts_at_sign_in=self._starts_at_sign_in,
+                start_at_sign_in=self._set_start_at_sign_in if self._autostart is not None else None)
         self._welcome.set_windows_night_light(self._windows_night_light)
         self._welcome.refresh()  # a tool may have been quit since
         reveal.show_window(self._welcome)
@@ -292,6 +298,18 @@ class NightLightApp:
         enabled = autostart.read(self._autostart)
         if enabled is not None and enabled != self._config.general.start_with_windows:
             self._config = replace(self._config, general=replace(self._config.general, start_with_windows=enabled))
+
+    def _starts_at_sign_in(self) -> bool | None:
+        return autostart.read(self._autostart)
+
+    def _set_start_at_sign_in(self, on: bool) -> None:
+        """The welcome screen's switch: what Settings' own does, applied at once."""
+        # Windows' state first: the saved setting can say on where Windows has
+        # no entry (the portable zip), and on to on would change nothing.
+        self._read_autostart()
+        self._apply_settings(replace(self._config, general=replace(self._config.general, start_with_windows=on)))
+        if self._settings is not None:
+            self._settings.take_start_with_windows(on)
 
     def show_settings(self) -> None:
         if self._settings is None:
@@ -726,10 +744,30 @@ class NightLightApp:
             displays_changed()
         self.controller.update()
 
+    def quit(self, reason: str) -> None:
+        """Quit, saying why in the log."""
+        self._quit_reason = reason
+        self._qapp.quit()
+
+    def _quit_from_tray(self) -> None:
+        self.quit("Quit in the tray menu")
+
+    def quit_when_asked(self) -> None:
+        """Another launch's --quit: the installer, the uninstaller or a script."""
+        self.quit("asked to by --quit (the installer, the uninstaller or a script)")
+
+    def _end_session(self) -> None:
+        self._quit_reason = "Windows is ending the session (signing out, restarting or shutting down)"
+        self._shutdown()
+
     def _shutdown(self) -> None:
         if self._shut_down:
             return  # quitting after signing out started it already
         self._shut_down = True
+        # A line at the start and one at the end: without them a log can't
+        # tell a clean quit from a crash or a power cut (testers' reports).
+        log.info("Quitting: %s", self._quit_reason or "asked to quit")
+        started, failed = time.monotonic(), []
         steps = (
             ("stopping the timers", lambda: (self._night_light_check.stop(), self._zone_check.stop(), self._cleanup.stop())),
             ("stopping the display watcher", self._watcher.stop),  # signing out keeps the event loop running: no late display events
@@ -750,7 +788,13 @@ class NightLightApp:
             try:
                 step()
             except Exception:
+                failed.append(what)
                 log.exception("Quitting: %s failed; carrying on", what)
+        took = time.monotonic() - started
+        if failed:
+            log.warning("Quit in %.1f s, but %s failed", took, " and ".join(failed))
+        else:
+            log.info("Quit cleanly in %.1f s: colors back to normal, levels saved", took)
 
 
 def _load_hints(path: Path) -> set[str]:
