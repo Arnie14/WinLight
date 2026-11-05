@@ -44,7 +44,7 @@ Run only one night light at a time: Winlight shows a notice when Windows Night L
 
 ## If you use a color tool: f.lux, Iris, LightBulb, CareUEyes
 
-These tools pioneered much of what night light means on a PC. f.lux in particular showed how much a warm evening screen and a "disable for this app" list matter, and Winlight's pausing follows its example.
+These tools pioneered much of what night light means on a PC. f.lux in particular showed how much a warm evening screen and a "disable for this app" list matter, and Winlight's pausing follows its example. Iris and CareUEyes are paid apps after a free trial, built around eye strain: Iris adds brightness without PWM flicker, presets for sleep and eye strain, and settings per monitor, on Windows, macOS and Linux; CareUEyes adds a screen dimmer and break reminders.
 
 What Winlight adds:
 
@@ -55,7 +55,7 @@ What Winlight adds:
 - **A sleep schedule** from your bedtime and wake-up time, based on what sleep research recommends.
 - **Recovery:** a crash or a killed process can't leave your screen tinted, and the calibration of a calibrated monitor is kept.
 
-A color tool may still suit you better if you need macOS or Linux, its particular color presets or effects, or many years of track record.
+A color tool may still suit you better if you need macOS or Linux, its particular color presets or effects, reminders to take a break (CareUEyes), or many years of track record.
 
 ## If you use a calibration loader: DisplayCAL, a calibrator's own app
 
@@ -70,9 +70,11 @@ What Winlight does as a loader:
 
 A dedicated loader may still suit you better for profiling and measuring (DisplayCAL is a profiler first), for 3D LUTs or other corrections beyond a gamma ramp, or for calibrations stored in forms Winlight doesn't read yet (Windows' calibration tool with gain or offset curves). Run only one loader: two would fight over the ramp, and Winlight backs off from a program that keeps changing it.
 
-## If you use a brightness tool: Twinkle Tray, Monitorian, PowerToys, a monitor maker's utility
+## If you use a brightness tool: Twinkle Tray, Monitorian, PowerToys, ClickMonitorDDC, a monitor maker's utility
 
 Twinkle Tray and Monitorian set the standard for monitor brightness on Windows, and Winlight learned a great deal from them: how to find monitors, which fallbacks to use, how to survive sleep, and which Windows quirks to expect. The [acknowledgements](../README.md#acknowledgements) list what came from each, and [windows-notes.md](windows-notes.md) has the details.
+
+ClickMonitorDDC, a long-standing freeware tool, sets brightness and contrast over DDC/CI, with presets you recall by keyboard shortcut. Monitor makers have their own utilities, each for its own brand's monitors: Dell Display and Peripheral Manager (which replaced Dell Display Manager) and LG OnScreen Control reach the monitor's own settings and add window layouts, and LG's switches picture modes per app.
 
 What Winlight adds:
 
@@ -87,7 +89,8 @@ What Winlight adds:
 A brightness tool may suit you better if you rely on:
 
 - contrast, input switching, volume or raw VCP codes (Twinkle Tray, Monitorian's add-on, PowerToys Power Display): deliberately left out of Winlight until they can be tested on many monitors, since a wrong DDC/CI write can switch a monitor's input or reset it;
-- saved profiles of monitor settings (PowerToys Power Display, which can also switch them with Windows' light and dark theme);
+- saved profiles of monitor settings (PowerToys Power Display, which can also switch them with Windows' light and dark theme), or brightness and contrast presets on a shortcut (ClickMonitorDDC);
+- your monitor maker's own features for its monitors: window layouts (Dell's Easy Arrange, LG's Screen Split), a picture mode chosen per app (LG OnScreen Control), and settings only the maker's utility knows;
 - per-monitor brightness ranges (Twinkle Tray's "normalize", Monitorian's adjustable range);
 - a Microsoft Store install (Twinkle Tray, Monitorian) or a code-signed build: planned for Winlight 0.8.0.
 
@@ -101,7 +104,7 @@ A brightness tool may suit you better if you rely on:
    - GPU color settings (NVIDIA, AMD, Intel): leave them at their defaults.
    - A calibration loader, if you turn on keeping calibrations in Winlight: quit it, so only one puts the calibration back.
 
-   The installer's first page lists these too.
+   The installer's first page lists these too, and Winlight's welcome screen names any that are running: f.lux, LightBulb, Iris, CareUEyes, Twinkle Tray, Monitorian, ClickMonitorDDC, Dell Display Manager or LG OnScreen Control.
 3. **Carry over your settings.** They map closely:
 
 | You had | In Winlight |
@@ -117,7 +120,7 @@ A brightness tool may suit you better if you rely on:
 | Brightness or night light hotkeys | Shortcuts: your own, or Add the usual for Ctrl+Alt+Up and Down |
 
 4. **Scripts and shortcuts.** [command-line.md](command-line.md) lists the `winlight-cli` equivalents of Twinkle Tray's, Monitorian's and PowerToys Power Display's commands.
-5. **If something doesn't work,** right-click the tray icon and choose **Report a Problem…**, then [open an issue](https://github.com/Arnie14/WinLight/issues) with the summary and the file. External monitors need DDC/CI turned on in their own on-screen menu; most TVs don't support it, and Winlight dims them through their colors instead.
+5. **If something doesn't work,** right-click the tray icon and choose **Report a Problem…**, then [open an issue](https://github.com/Arnie14/WinLight/issues/new?template=bug_report.yml) with the summary and the file. External monitors need DDC/CI turned on in their own on-screen menu; most TVs don't support it, and Winlight dims them through their colors instead.
 
 ## The problem on Windows
 
@@ -150,4 +153,4 @@ It is also built in the open as a learning project, to:
 
 Every tool here is free to try, and several are open source. If one already does what you need, keep it. Winlight is for setups with several displays where night light and brightness should each follow a schedule, and night light should step aside per display for media, games and color work. Feedback from people coming from other tools is welcome, especially about settings that don't carry over.
 
-Descriptions of other tools come from their own documentation as of October 2026: [Twinkle Tray](https://github.com/xanderfrangos/twinkle-tray), [Monitorian](https://github.com/emoacht/Monitorian) and its [commands](https://github.com/emoacht/Monitorian/blob/master/docs/COMMANDS.md), [PowerToys Power Display](https://learn.microsoft.com/windows/powertoys/power-display), [f.lux](https://justgetflux.com/) and [LightBulb](https://github.com/Tyrrrz/LightBulb). Features change; corrections are welcome.
+Descriptions of other tools come from their own documentation as of October 2026: [Twinkle Tray](https://github.com/xanderfrangos/twinkle-tray), [Monitorian](https://github.com/emoacht/Monitorian) and its [commands](https://github.com/emoacht/Monitorian/blob/master/docs/COMMANDS.md), [PowerToys Power Display](https://learn.microsoft.com/windows/powertoys/power-display), [f.lux](https://justgetflux.com/) and [LightBulb](https://github.com/Tyrrrz/LightBulb); and as of November 2026: [Iris](https://iristech.co/features/), [CareUEyes](https://care-eyes.com/), [ClickMonitorDDC 7.2's documentation](https://github.com/chrismah/ClickMonitorDDC7.2), [Dell Display and Peripheral Manager](https://www.dell.com/support/kbdoc/en-us/000287285/dell-display-and-peripheral-manager-for-windows) and [LG OnScreen Control](https://www.lg.com/ca_en/support/product-help/CT20098114-20152996205833). Features change; corrections are welcome.
