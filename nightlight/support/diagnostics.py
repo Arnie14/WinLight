@@ -39,10 +39,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import PySide6
-from PySide6.QtCore import QStandardPaths, qVersion
+from PySide6.QtCore import QStandardPaths, QUrl, QUrlQuery, qVersion
 from PySide6.QtGui import QGuiApplication
 
-from nightlight import APP_NAME, __version__, config
+from nightlight import APP_NAME, __version__, config, display_version
 from nightlight.color.exemptions import describe as describe_pause
 from nightlight.support.privacy import scrub
 from nightlight.system.packaging_info import visible_path
@@ -50,7 +50,22 @@ from nightlight.system.packaging_info import visible_path
 log = logging.getLogger(__name__)
 
 ISSUES_URL = "https://github.com/Arnie14/WinLight/issues/new"
+ISSUE_FORM = "bug_report.yml"  # in .github/ISSUE_TEMPLATE: asks for the summary, the zip and when it happened
 KEEP_DAYS = 7
+
+
+def issue_url() -> str:
+    """GitHub's form for reporting a problem, with this version filled in:
+    nothing else, the rest is the user's to give. Built with Qt's QUrl, as
+    urllib is for the update check alone (test_updates.py)."""
+    query = QUrlQuery()
+    query.addQueryItem("template", ISSUE_FORM)
+    query.addQueryItem("version", display_version())
+    url = QUrl(ISSUES_URL)
+    url.setQuery(query)
+    return url.toString(QUrl.ComponentFormattingOption.FullyEncoded)
+
+
 CLIPBOARD_MINUTES = 10
 # The names write_bundle gives, and only those, are cleaned up.
 BUNDLE_NAME = re.compile(rf"{re.escape(APP_NAME)}-diagnostics-\d{{8}}-\d{{6}}\.zip")

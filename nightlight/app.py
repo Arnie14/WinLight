@@ -429,7 +429,7 @@ class NightLightApp:
         if clicked is getattr(box, "show_file", None):
             _reveal(box.path)
         elif clicked is getattr(box, "open_issues", None):
-            QDesktopServices.openUrl(QUrl(diagnostics.ISSUES_URL))
+            QDesktopServices.openUrl(QUrl(diagnostics.issue_url()))
 
     def handle_request(self, request: dict, reply) -> None:
         """A request from the command line (winlight-cli)."""

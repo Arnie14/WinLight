@@ -1,0 +1,60 @@
+name: Report a problem
+description: Something in Winlight doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. First, right-click Winlight's tray icon and choose **Report a Problem…**: it saves a zip to Winlight's Reports folder and copies a summary to the clipboard. Neither holds your name, computer name or location, and you can open the zip to check before attaching it.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what Winlight did, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: when
+    attributes:
+      label: When did it happen?
+      description: The date and roughly the time, so the matching lines in the log can be found.
+      placeholder: 2026-11-05, around 21:30
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      description: If you know them.
+      placeholder: |
+        1. Plug in the second monitor
+        2. Open the panel
+        3. Move its slider
+  - type: dropdown
+    id: displays
+    attributes:
+      label: Which displays are involved?
+      multiple: true
+      options:
+        - The laptop's built-in display
+        - An external monitor
+        - A TV
+        - A display with HDR on
+        - None, it isn't about a display
+  - type: textarea
+    id: summary
+    attributes:
+      label: The summary from Report a Problem
+      description: Paste it here; Report a Problem puts it on the clipboard. If Winlight won't start, say so above and attach the log from %LOCALAPPDATA%\WinLight\Logs below instead.
+      render: text
+  - type: textarea
+    id: report
+    attributes:
+      label: The zip from Report a Problem
+      description: Drag the zip into this box (Show File in Winlight opens its folder). Winlight deletes it from your PC after 7 days.
+  - type: input
+    id: version
+    attributes:
+      label: Winlight version
+      description: Settings > General > About. Already filled in when you come here from Report a Problem.
+      placeholder: 0.8.0 Beta 2
+    validations:
+      required: true

@@ -2,7 +2,7 @@
 
 For testers using the installer from [Releases](https://github.com/Arnie14/WinLight/releases), on Windows 11. No Python or source code needed. It takes about 25 minutes; skip anything that doesn't apply to your hardware. The full developer checklist is [windows-testing.md](windows-testing.md).
 
-**Found a problem?** Right-click the tray icon → **Report a Problem…**. Winlight saves a zip to its Reports folder (**Show File** opens it) and copies a summary. [Open an issue](https://github.com/Arnie14/WinLight/issues), paste the summary, attach the zip, and say which step below went wrong.
+**Found a problem?** Right-click the tray icon → **Report a Problem…**. Winlight saves a zip to its Reports folder (**Show File** opens it) and copies a summary. [Open an issue](https://github.com/Arnie14/WinLight/issues/new?template=bug_report.yml) (**Open GitHub Issues** opens it), paste the summary, attach the zip, and say which step below went wrong.
 
 Tell us your setup in the issue: Windows version, laptop or desktop, and each display's model and how it's connected (HDMI, DisplayPort, USB-C, dock, adapter).
 

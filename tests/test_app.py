@@ -775,3 +775,17 @@ def test_a_quit_step_that_fails_is_named_at_the_end(start, monkeypatch, caplog):
         night_light._shutdown()
     [last] = [line for line in quit_lines(caplog) if line.startswith("Quit ")]
     assert "but stopping the brightness schedule failed" in last
+
+
+def test_report_a_problems_open_github_issues_opens_the_problem_form(start, monkeypatch, tmp_path):
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QGuiApplication
+
+    night_light, _ = start(GeneralConfig())
+    monkeypatch.setattr(app_module.diagnostics, "write_bundle", lambda sources: (tmp_path / "Winlight-diagnostics-x.zip", "the summary"))
+    opened = []
+    monkeypatch.setattr(app_module.QDesktopServices, "openUrl", lambda url: opened.append(url.toString(QUrl.ComponentFormattingOption.FullyEncoded)))
+    night_light.report_problem()
+    night_light._report_box.open_issues.click()
+    assert opened == [app_module.diagnostics.issue_url()]
+    QGuiApplication.clipboard().clear()

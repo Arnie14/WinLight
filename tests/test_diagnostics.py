@@ -208,3 +208,21 @@ def test_reports_include_the_log_by_its_new_and_old_names(tmp_path):
         names = set(bundle.namelist())
     assert {"logs/WinLight.log", "logs/night-light.log.1"} <= names and "logs/unrelated.txt" not in names
     controller.shutdown()
+
+
+def test_open_github_issues_opens_the_problem_form_with_only_the_version_filled_in():
+    """GitHub fills an issue form's field from the address by its id, and
+    ignores an id the form doesn't have: the form must have the one the app
+    fills. Nothing else goes in the address (it's sent to GitHub)."""
+    from pathlib import Path
+    from urllib.parse import parse_qs, urlsplit
+
+    from nightlight import display_version
+
+    form = (Path(__file__).resolve().parents[1] / ".github" / "ISSUE_TEMPLATE" / diagnostics.ISSUE_FORM).read_text(encoding="utf-8")
+    address = urlsplit(diagnostics.issue_url())
+    assert f"{address.scheme}://{address.netloc}{address.path}" == diagnostics.ISSUES_URL
+    assert parse_qs(address.query) == {"template": [diagnostics.ISSUE_FORM], "version": [display_version()]}
+    assert "    id: version\n" in form
+    for field in ("what-happened", "when", "summary", "report"):  # what a report needs, as Report a Problem's box says
+        assert f"    id: {field}\n" in form

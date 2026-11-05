@@ -50,7 +50,7 @@ Winlight is a light tray app: about 50 MB of memory and about 0.5% of one proces
 
 ## Reporting a problem
 
-Right-click the tray icon and choose **Report a Problem…**. Winlight saves a zip with its logs, settings and what it knows about each display to its Reports folder, copies a summary to the clipboard, and shows the file. Reports are meant to be posted publicly, so your user name, computer name, home folder and email addresses are replaced with placeholders, and your location, custom display names and listed apps are left out. Open an [issue](https://github.com/Arnie14/WinLight/issues), paste the summary and attach the zip. The zip is deleted after 7 days.
+Right-click the tray icon and choose **Report a Problem…**. Winlight saves a zip with its logs, settings and what it knows about each display to its Reports folder, copies a summary to the clipboard, and shows the file. Reports are meant to be posted publicly, so your user name, computer name, home folder and email addresses are replaced with placeholders, and your location, custom display names and listed apps are left out. [Open an issue](https://github.com/Arnie14/WinLight/issues/new?template=bug_report.yml) (**Open GitHub Issues** opens it): its form asks for the summary, the zip and when it happened. The zip is deleted after 7 days.
 
 If Microsoft Defender flags a build, please [submit it to Microsoft as a false positive](https://www.microsoft.com/wdsi/filesubmission) and open an issue.
 
