@@ -1655,20 +1655,28 @@ class WindowsGammaBackend:
         expected = display.last_set if display.last_set is not None else (display.base or identity_ramp(win32.RAMP_SIZE))
         if ramps_match(current, expected):
             return
-        if display.last_set is not None:
-            # Windows resets ramps on display changes and when it reloads a
-            # calibration; another color tool may have changed it too.
-            self._foreign_change(display)
-        display.last_set = None
-        key = display.key or display.name
         # The journal first: it knows Winlight's own tints exactly, including
         # one over a curved calibration, which the shape test would keep.
+        key = display.key or display.name
         recovered = self._journal.recognises(key, current)
+        # Set by this run already: what is there now replaced it, so it can't
+        # be a tint left by a crash, even when it is one of Winlight's own.
+        running = display.last_set is not None
+        if running:
+            # Windows resets ramps on display changes and when it reloads a
+            # calibration; another color tool may have changed it too.
+            self._foreign_change(display, own_tint=recovered is not None)
+        display.last_set = None
         if recovered is not None or not plausible_base(current):
             display.base = None if recovered is None or ramps_match(recovered, identity_ramp(win32.RAMP_SIZE)) else recovered
             display.calibration = SCREEN if display.base is not None else ""
             display.leftover = True
-            if recovered is not None:
+            if recovered is not None and running:
+                # Seen in a tester's log (0.7.5): the 6400 K day tint came back
+                # mid-run, and the message said Winlight had crashed.
+                log.info("One of Winlight's earlier tints came back on %s while it was running (Windows or the graphics "
+                         "driver put it back, not a crash); setting the right ramp again", display.name)
+            elif recovered is not None:
                 log.warning("%s still had the tint Winlight left when it last stopped unexpectedly; restoring the ramp it had before", display.name)
             else:
                 self._warn_once(
@@ -1694,9 +1702,10 @@ class WindowsGammaBackend:
                 self._journal.remember_calibration(key, current)
                 log.info("Keeping the existing gamma ramp of %s (its calibration) as the base for night light", display.name)
 
-    def _foreign_change(self, display: _GammaDisplay) -> None:
+    def _foreign_change(self, display: _GammaDisplay, own_tint: bool = False) -> None:
         """Our ramp was replaced: once is Windows (a reset) or a tool starting;
-        again and again is another program fighting over it (see CONTEST_CHANGES)."""
+        again and again is another program fighting over it (see CONTEST_CHANGES).
+        `own_tint`: by one of Winlight's earlier tints, which isn't kept as the base."""
         now = self._clock()
         if now < self._settling_until:
             log.debug("The gamma ramp of %s was reset again while the desktop came back", display.name)
@@ -1707,7 +1716,8 @@ class WindowsGammaBackend:
             log.debug("The gamma ramp of %s was changed by another program again", display.name)
             return
         if len(display.foreign) < CONTEST_CHANGES:
-            log.info("The gamma ramp of %s was changed by something else; using it as the new base", display.name)
+            if not own_tint:  # an earlier tint of Winlight's own is said by the caller
+                log.info("The gamma ramp of %s was changed by something else; using it as the new base", display.name)
             return
         display.backoff = min(CONTEST_BACKOFF_MAX_S, display.backoff * 2) if display.backoff else CONTEST_BACKOFF_S
         display.contested, display.contested_until = True, now + display.backoff

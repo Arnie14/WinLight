@@ -721,6 +721,33 @@ def test_a_crash_mid_fade_is_recognised_too(monkeypatch, tmp_path):
     assert gdi.ramps[D1] == CALIBRATION
 
 
+def test_an_earlier_tint_coming_back_while_running_is_not_called_a_crash(monkeypatch, tmp_path, caplog):
+    """A tester's log (0.7.5): the 6400 K day tint came back on the display
+    while Winlight ran, and the log said Winlight had stopped unexpectedly.
+    At start that is what it means; once this run has set a ramp, it isn't."""
+    import logging
+
+    gdi = FakeGdi({D1: [list(c) for c in CALIBRATION]})
+    gdi.install(monkeypatch, [with_edid(D1, "Calibrated", "C1")])
+    path = tmp_path / "gamma.json"
+    crashed = windows.WindowsGammaBackend(journal=windows.GammaJournal(path))
+    crashed.apply(4500)
+    del crashed  # killed: the tint stays
+    restarted = windows.WindowsGammaBackend(journal=windows.GammaJournal(path))
+    with caplog.at_level(logging.INFO, logger="nightlight.hardware.windows"):
+        restarted.apply(5000)
+    assert "stopped unexpectedly" in caplog.text  # at start: left by the crash
+    caplog.clear()
+    gdi.ramps[D1] = gamma_ramp(whitepoint(4800), base=CALIBRATION)  # an earlier tint, put back by something
+    with caplog.at_level(logging.INFO, logger="nightlight.hardware.windows"):
+        assert restarted.verify()  # the check every second or two notices it, and sets the right ramp again
+    assert "One of Winlight's earlier tints came back" in caplog.text and "not a crash" in caplog.text
+    assert "stopped unexpectedly" not in caplog.text and "using it as the new base" not in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert same(gdi.ramps[D1], gamma_ramp(whitepoint(5000), base=CALIBRATION))  # the calibration still underneath
+    restarted.release()
+
+
 def test_a_stale_journal_entry_is_dropped(monkeypatch, tmp_path):
     gdi = FakeGdi({D1: [list(c) for c in CALIBRATION]})
     gdi.install(monkeypatch, [with_edid(D1, "Calibrated", "C1")])
