@@ -35,6 +35,16 @@ class FakeMonitors(QObject):
         self.levels[key] = value
 
 
+def wait_until(condition, timeout_ms=3000):
+    """The keeper's timers (10 and 30 ms here) can run late on a busy
+    machine: wait for what they do, not a fixed time."""
+    for _ in range(timeout_ms // 10):
+        if condition():
+            return True
+        QTest.qWait(10)
+    return condition()
+
+
 class Clock:
     def __init__(self):
         self.now = 100.0
@@ -60,7 +70,7 @@ def test_windows_changing_the_panel_for_the_power_source_is_put_back(keeper):
     keeper.power_source_changed()  # unplugged
     assert keeper.settling() and keeper.absorbs(40)  # the power plan's battery level: not the user's
     monitors.levels["BOE0812"] = 40
-    QTest.qWait(80)
+    assert wait_until(lambda: monitors.sent)
     assert monitors.reads == ["BOE0812"]  # read again first
     assert monitors.sent == [("BOE0812", 60, RESTORE)]  # the level from before; external displays untouched
     clock.now += power_source.SETTLE_S
@@ -73,7 +83,7 @@ def test_a_change_reported_just_before_the_message_is_windows_too(keeper):
     monitors.levels["BOE0812"] = 40
     clock.now += 0.2
     keeper.power_source_changed()
-    QTest.qWait(80)
+    assert wait_until(lambda: monitors.sent)
     assert monitors.sent == [("BOE0812", 60, RESTORE)]
 
 

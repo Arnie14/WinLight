@@ -265,7 +265,7 @@ def test_a_hung_monitor_call_is_reported_and_quitting_does_not_wait_for_it(monke
     assert len(errors) == 1  # once per stuck call, not on every check
     started = time.monotonic()
     monitors.shutdown()
-    assert time.monotonic() - started < 1 and monitors.hung
+    assert time.monotonic() - started < 2 and monitors.hung  # the wait (0.3 s), not the stuck call (for ever)
     backend.release.set()  # let the thread finish so the test run can end cleanly
 
 

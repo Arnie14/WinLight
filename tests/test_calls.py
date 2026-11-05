@@ -31,7 +31,7 @@ def test_a_stuck_call_is_given_up_on_and_the_next_one_still_runs():
     started = time.monotonic()
     with pytest.raises(CallTimeout) as raised:
         runner.call(lambda: release.wait(5), 0.1, "reading a monitor", on_late=returned.set)
-    assert time.monotonic() - started < 0.5
+    assert time.monotonic() - started < 2  # far below the call's 5 s: a busy CI runner is slow, not stuck
     assert raised.value.what == "reading a monitor"
     assert runner.call(lambda: "next", 1) == "next"  # on a fresh thread
     assert runner.threads_started == 2

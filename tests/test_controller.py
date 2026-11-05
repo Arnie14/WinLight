@@ -378,21 +378,27 @@ def test_the_regular_check_catches_a_reset_without_any_event(monkeypatch):
 
 
 
-def test_a_fade_lasts_as_long_as_it_should_however_slow_each_step(monkeypatch):
+def test_a_fade_lasts_as_long_as_it_should_however_slow_each_step():
     """The fade moved a fixed 50 K per timer tick: with ticks late (Windows'
     timers, and each step setting and reading back every display's ramp) a
-    2 s fade took 3.8 s on the test laptop. It follows the clock now."""
-    import time
+    2 s fade took 3.8 s on the test laptop. It follows the clock now. Here a
+    fake clock makes every tick a quarter of the fade late, so the result is
+    the same on any machine (timing it by the real clock failed on busy ones):
+    four steps, where 50 K a tick took 90."""
+    calls = []
+    quarter = controller_module.QUICK_ADJUST_MS / 1000 / 4
+
+    def late_ticks():
+        calls.append(None)
+        return (len(calls) - 1) * quarter
 
     gamma = RecordingGamma()
-    controller = make(gamma)
-    started = time.monotonic()
+    controller = NightLightController(gamma, NightLightConfig(), clock=lambda: NOON, ticks=late_ticks)
+    before = len(gamma.applied)
     controller.set_config(NightLightConfig(enabled=True, mode=Mode.ALWAYS, night_temperature=2000))
     for _ in range(300):
         if gamma.applied and gamma.applied[-1] == 2000:
             break
         QTest.qWait(10)
-    took = time.monotonic() - started
-    assert gamma.applied[-1] == 2000
-    assert took < controller_module.QUICK_ADJUST_MS / 1000 + 0.4, f"{took:.2f} s"  # 90 steps of 50 K wouldn't fit
+    assert gamma.applied[before:] == [5375, 4250, 3125, 2000]
     controller.shutdown()

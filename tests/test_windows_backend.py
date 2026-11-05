@@ -538,7 +538,7 @@ def test_a_hanging_monitor_is_left_alone_and_the_others_still_work(monkeypatch):
     backend = backend_with()
     started = time.monotonic()
     hung, fine = backend.list_monitors()
-    assert time.monotonic() - started < 1.0  # bounded by the probe deadline, probes side by side
+    assert time.monotonic() - started < 2.5  # bounded by the probe deadline, far below the hang's 5 s
     assert not hung.supported and hung.status == "not responding" and hung.reason == windows.REASON_NOT_RESPONDING
     assert fine.supported and backend.get_brightness(1) == 60
     assert 7 not in ddc.destroyed  # its probe still uses the handle
@@ -1211,7 +1211,9 @@ def test_a_ramp_change_stuck_on_another_thread_never_freezes_the_caller(monkeypa
 
     from nightlight.hardware.gamma import GammaBusy
 
-    monkeypatch.setattr(windows, "LOCK_WAIT_S", 0.2)
+    # A full wait (1 s) far from a stuck lock's short one (0.05 s): "waited once,
+    # then barely" holds however slow the machine, and missing it can't pass.
+    monkeypatch.setattr(windows, "LOCK_WAIT_S", 1.0)
     gdi = FakeGdi({D1: identity_ramp()}, min_peak=0.0)
     gdi.install(monkeypatch, [target(D1, "A")])
     gamma = windows.WindowsGammaBackend()
@@ -1233,7 +1235,7 @@ def test_a_ramp_change_stuck_on_another_thread_never_freezes_the_caller(monkeypa
         started = time.monotonic()
         assert gamma.verify() is False and gamma.warmest_accepted() == {} and not gamma.dimmed
         later = time.monotonic() - started
-    assert first < 1.0 and later < 0.5  # waited once, then barely
+    assert first < 3 and later < 1.0  # waited once (not the stuck call's 10 s), then barely (not 1 s a call)
     assert sum("stuck" in r.getMessage() for r in caplog.records) == 1  # said once
     with pytest.raises(GammaBusy):
         gamma.reload_calibrations()  # asked by the user: they're told

@@ -151,7 +151,10 @@ def fail_on_hidden_problems(request):
     QT_PROBLEMS.clear()
     hook = sys.excepthook
     sys.excepthook = _slot_exception  # where PySide sends an exception raised in a slot
-    lasting = {t.ident for t in threading.enumerate() if not t.daemon}
+    # Thread objects, not their idents: a thread started but not yet running
+    # has no ident (None) and gets one moment later, and an ident can be
+    # reused once its thread ends (see test_architecture's rule).
+    lasting = {t for t in threading.enumerate() if not t.daemon}
     faulthandler.dump_traceback_later(WATCHDOG_S, exit=True, file=_real_stderr(request.config))
     yield QT_PROBLEMS
     faulthandler.cancel_dump_traceback_later()
@@ -163,7 +166,7 @@ def fail_on_hidden_problems(request):
     problems = [f"an exception in a Qt slot:\n{text}" for text in QT_PROBLEMS.exceptions]
     problems += [f"Qt said: {text}" for text in QT_PROBLEMS.messages]
     problems += [f"a thread left running (not a daemon): {t.name}" for t in threading.enumerate()
-                 if not t.daemon and t.ident not in lasting and t.is_alive()]
+                 if not t.daemon and t not in lasting and t.is_alive()]
     QT_PROBLEMS.clear()
     if problems:
         pytest.fail("\n".join(problems), pytrace=False)

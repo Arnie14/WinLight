@@ -397,7 +397,7 @@ def test_monitor_managers_started_and_stopped_leave_no_threads():
     from nightlight.hardware import create_backends
 
     def threads():
-        return {t.ident for t in threading.enumerate()}
+        return set(threading.enumerate())  # objects, not idents (test_architecture's rule)
 
     before = threads()
     for _ in range(6):
@@ -410,7 +410,7 @@ def test_monitor_managers_started_and_stopped_leave_no_threads():
         if threads() <= before:
             break
         QTest.qWait(20)
-    assert threads() <= before, [t.name for t in threading.enumerate() if t.ident not in before]
+    assert threads() <= before, [t.name for t in threading.enumerate() if t not in before]
 
 
 # --- Starting and quitting leave nothing behind --------------------------------------------------
@@ -431,7 +431,7 @@ def test_starting_and_quitting_again_and_again_leaves_nothing_behind(tmp_path, m
     (tmp_path / "settings.json").write_text(json.dumps({
         "general": {"start_minimized": True, "check_for_updates": True},
         "shortcuts": [{"keys": "Ctrl+Alt+Up", "action": "brightness_up"}]}), encoding="utf-8")
-    before = {t.ident for t in threading.enumerate()}
+    before = set(threading.enumerate())  # objects, not idents (test_architecture's rule)
     for _ in range(5):
         brightness, gamma = create_backends("fake")
         night_light = app_module.NightLightApp(QApplication.instance(), brightness, gamma, tmp_path / "settings.json")
@@ -452,10 +452,10 @@ def test_starting_and_quitting_again_and_again_leaves_nothing_behind(tmp_path, m
             night_light.tray.hide()
         night_light.flyout.hide()
     for _ in range(150):
-        if {t.ident for t in threading.enumerate()} <= before:
+        if set(threading.enumerate()) <= before:
             break
         QTest.qWait(20)
-    assert {t.ident for t in threading.enumerate()} <= before, [t.name for t in threading.enumerate() if t.ident not in before]
+    assert set(threading.enumerate()) <= before, [t.name for t in threading.enumerate() if t not in before]
 
 
 # --- Qt objects: on the main thread, and freed when let go ------------------------------------------

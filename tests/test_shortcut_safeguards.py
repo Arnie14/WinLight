@@ -493,7 +493,7 @@ def test_ten_thousand_random_presses_settings_and_failures_leave_nothing_behind(
             raise RuntimeError("chaos")
 
     svc = ShortcutService(events, run, clock=clock)
-    threads = threading.active_count()
+    before = set(threading.enumerate())  # not a count: an earlier test's thread may end meanwhile
     logging.disable(logging.CRITICAL)
     try:
         for step in range(10_000):
@@ -517,7 +517,7 @@ def test_ten_thousand_random_presses_settings_and_failures_leave_nothing_behind(
         logging.disable(logging.NOTSET)
     svc.stop()
     assert events.registered == {} and svc._registered == {} and svc._taken == {}
-    assert ran and threading.active_count() == threads
+    assert ran and set(threading.enumerate()) <= before, [t.name for t in threading.enumerate() if t not in before]
 
 
 # --- Garbage collection and threads ----------------------------------------------------------
@@ -606,10 +606,12 @@ def test_presses_add_no_threads(app):  # noqa: F811
             events.hotkeyPressed.emit(hotkey_id)
 
     press_each()  # the worker starts here if it hadn't
-    before = {t.ident for t in threading.enumerate()}
+    # Thread objects, not idents: on CI the worker just started had no ident
+    # yet (None) in `before`, got one, and was taken for a new thread.
+    before = set(threading.enumerate())
     for _ in range(5):
         press_each()
-    assert {t.ident for t in threading.enumerate()} <= before
+    assert set(threading.enumerate()) <= before, [t.name for t in threading.enumerate() if t not in before]
     svc.stop()
     app.flyout.hide()
     if app._shortcut_overlay:

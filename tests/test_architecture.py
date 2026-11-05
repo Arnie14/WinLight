@@ -538,6 +538,20 @@ def rule_concurrency_never_sleeps(trees) -> list[str]:
 TEST_TREES = {path: with_parents(ast.parse(path.read_text(encoding="utf-8"))) for path in (ROOT / "tests").glob("*.py")}
 
 
+def rule_threads_compared_as_objects(trees) -> list[str]:
+    return [f"{where(path, node)} .ident" for path, tree in trees.items() for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and node.attr == "ident"]
+
+
+def test_tests_compare_threads_as_objects_not_idents():
+    """A thread started but not yet running has no ident (None) and gets one
+    a moment later; an ident is reused once its thread ends. A snapshot of
+    idents took a just-started worker for a new thread on CI's busy runner
+    (test_presses_add_no_threads), and could miss a new thread wearing an
+    old one's ident. Compare the Thread objects themselves."""
+    assert not rule_threads_compared_as_objects(TEST_TREES)
+
+
 def test_concurrency_tests_never_sleep():
     """A race test that sleeps to let the other thread "get there" passes on
     a fast machine and fails on a busy one. These wait for gates and events
@@ -568,6 +582,7 @@ BAD = {
     rule_bare_program_names: "import subprocess\nsubprocess.Popen(['explorer', '/select,', 'x'])\n",
     rule_paths_shown_to_others: "def show(folder):\n    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))\n",
     rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
+    rule_threads_compared_as_objects: "import threading\nbefore = {t.ident for t in threading.enumerate()}\n",
     rule_reads_what_is_in_first: ("def request(socket):\n    reply = b''\n"
                                   "    while not reply.endswith(b'\\n') and socket.waitForReadyRead(10000):\n"
                                   "        reply += bytes(socket.readAll().data())\n"),

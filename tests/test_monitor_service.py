@@ -437,7 +437,7 @@ def test_a_hung_display_does_not_block_the_others(short_timeouts):
     service.request_write(Write("B", 20))
     started = time.monotonic()
     service.run_pending()
-    assert time.monotonic() - started < 1.5  # bounded: A's call was given up on
+    assert time.monotonic() - started < 3  # bounded: A's call was given up on
     assert ("B", 20) in backend.sets()
     assert of(events, Failed)[0] == Failed("A", of(events, Failed)[0].message, timeout=True)
     # While A's call is stuck, A gets nothing more (at most one stuck call per display).
@@ -517,7 +517,7 @@ def test_a_hung_detection_is_bounded_and_retried(short_timeouts):
     started = time.monotonic()
     service.request_detect()
     service.run_pending()
-    assert time.monotonic() - started < 1.5
+    assert time.monotonic() - started < 3
     assert of(events, DetectionStuck)
     assert backend.sets() == []  # no index can be trusted while detection is stuck
     backend.block_detection.set()  # the driver finally answers
@@ -574,7 +574,7 @@ def test_closing_with_a_stuck_call_does_not_wait_for_it(short_timeouts):
     started = time.monotonic()
     service.close()
     assert service.step() is None
-    assert time.monotonic() - started < 0.5
+    assert time.monotonic() - started < 2  # the close wait (0.2 s), not the stuck call (until let go)
     release.set()
 
 

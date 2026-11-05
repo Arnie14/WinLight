@@ -648,16 +648,20 @@ def test_the_overlay_paints_levels_and_messages(dark):
 def test_the_overlay_goes_by_itself_and_each_use_keeps_it_up(monkeypatch):
     from nightlight.ui import shortcut_overlay
 
-    monkeypatch.setattr(shortcut_overlay, "SHOW_MS", 50)
+    # The timer's own time left, not waits timed against it: with 50 ms and
+    # waits of 30, a busy machine's late timers could fail either check.
+    monkeypatch.setattr(shortcut_overlay, "SHOW_MS", 600)
     overlay = shortcut_overlay.ShortcutOverlay()
-    overlay._timer.setInterval(50)
     overlay.show_message("Night light: On")
-    QTest.qWait(30)
+    QTest.qWait(200)
+    left = overlay._timer.remainingTime()
     overlay.show_message("Night light: Off")  # again before it went
-    QTest.qWait(30)
-    assert overlay.isVisible()
-    QTest.qWait(60)
-    assert not overlay.isVisible()
+    assert overlay.isVisible() and overlay._timer.remainingTime() > left  # its time starts again
+    for _ in range(300):
+        if not overlay.isVisible():
+            break
+        QTest.qWait(10)
+    assert not overlay.isVisible()  # and then it goes by itself
 
 
 # --- On Windows, for real ---------------------------------------------------------------------------
