@@ -2,6 +2,16 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.8.6 Beta 1 (2026-11-05)
+
+### Changed
+
+- **The log says what you did**, so a Report a Problem zip shows what was tried, not only what Winlight did: settings applied (which pages and settings, never their values), night light suspended, turned on or back to its schedule and from where (the tray menu, the panel, Settings, a shortcut, the command line), and brightness set by hand, once it settles (a drag is one line).
+
+### Fixed
+
+- The log said Winlight "last stopped unexpectedly" when one of its own earlier tints came back on a display while it was running (put back by Windows or the graphics driver; seen in a tester's report). It handled it rightly; the message now says what happened.
+
 ## 0.8.5 Beta 1 (2026-11-05)
 
 ### Added

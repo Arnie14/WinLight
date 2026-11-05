@@ -55,6 +55,6 @@ body:
     attributes:
       label: Winlight version
       description: Settings > General > About. Already filled in when you come here from Report a Problem.
-      placeholder: 0.8.5 Beta 1
+      placeholder: 0.8.6 Beta 1
     validations:
       required: true
