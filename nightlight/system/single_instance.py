@@ -99,7 +99,13 @@ class SingleInstance(QObject):
         socket.write(json.dumps(payload).encode() + b"\n")
         socket.waitForBytesWritten(WRITE_TIMEOUT_MS)
         reply = b""
-        while not reply.endswith(b"\n") and socket.waitForReadyRead(timeout_ms):
+        while not reply.endswith(b"\n"):
+            # The answer can be in already: waiting for the write takes in
+            # what arrives meanwhile, and waitForReadyRead waits only for new
+            # data. Without this check the command line waited 10 s and said
+            # Winlight didn't answer, holding the answer (seen under load).
+            if socket.bytesAvailable() <= 0 and not socket.waitForReadyRead(timeout_ms):
+                break
             reply += bytes(socket.readAll().data())
         socket.disconnectFromServer()
         try:

@@ -198,3 +198,52 @@ def test_a_user_name_with_periods_spaces_or_any_script_still_reaches_the_running
         assert wait_for(lambda: shown, launch) == 0 and shown
     finally:
         instance.close()
+
+
+class AnswerAlreadyIn:
+    """A QLocalSocket whose answer arrives while the request is still being
+    sent: waiting for the write takes it in, so it is in the buffer before
+    the client waits to read, and waitForReadyRead, which waits only for
+    *new* data, gives up. Seen in CI and traced under load: avail=227 bytes,
+    then wait=False after 10 s."""
+
+    def __init__(self, answer: bytes):
+        self._answer, self._buffer = answer, b""
+
+    def connectToServer(self, _name):
+        pass
+
+    def waitForConnected(self, _ms):
+        return True
+
+    def write(self, _data):
+        return len(_data)
+
+    def waitForBytesWritten(self, _ms):
+        self._buffer = self._answer  # the answer came in meanwhile
+        return True
+
+    def bytesAvailable(self):
+        return len(self._buffer)
+
+    def waitForReadyRead(self, _ms):
+        return False  # nothing *new* arrives: it is all in already
+
+    def readAll(self):
+        from PySide6.QtCore import QByteArray
+
+        data, self._buffer = self._buffer, b""
+        return QByteArray(data)
+
+    def disconnectFromServer(self):
+        pass
+
+
+def test_an_answer_that_came_in_while_the_request_was_sent_is_read(monkeypatch):
+    """winlight-cli said "Winlight didn't answer in time" after 10 s though
+    the answer had arrived: it only waited for more."""
+    from nightlight.system import single_instance as module
+
+    monkeypatch.setattr(module, "QLocalSocket", lambda: AnswerAlreadyIn(b'{"ok": true, "output": "DELL U2720Q: 75%"}\n'))
+    monkeypatch.setattr(SingleInstance, "_is_ours", staticmethod(lambda socket: True))
+    assert SingleInstance("test").request({"command": "list"}) == {"ok": True, "output": "DELL U2720Q: 75%"}
