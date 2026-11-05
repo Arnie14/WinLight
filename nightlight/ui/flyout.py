@@ -39,6 +39,8 @@ from nightlight.ui.night_light_text import (
 from nightlight.ui.placement import flyout_position
 from nightlight.ui.widgets import GlyphButton, MonitorBrightness, SecondaryLabel, WindowsNightLightNotice, blend, kelvin_color, set_font, set_heading_font
 
+PANEL = "the panel"  # where night light was changed from, for the log
+
 WIDTH = 340
 
 
@@ -279,7 +281,7 @@ class Flyout(QFrame):
         self._night_text.setText(night_light_status(controller) + (f"\n{paused}" if paused else ""))
         if self._override_menu.isVisible():
             return  # don't rebuild the menu under the user's cursor
-        label = build_override_menu(controller, self._override_menu)
+        label = build_override_menu(controller, self._override_menu, PANEL)
         Mode = QToolButton.ToolButtonPopupMode
         if controller.state.override is not None:  # "Resume" or "Turn Off": a click ends it
             self._toggle.setText(label)
@@ -317,8 +319,8 @@ class Flyout(QFrame):
     def _on_toggle_clicked(self) -> None:
         controller = self._controller
         if controller.state.override is not None:
-            controller.clear_override()  # "Resume" or "Turn Off"
+            controller.clear_override(PANEL)  # "Resume" or "Turn Off"
         elif can_suspend(controller):
-            toggle_suspended(controller)  # "Suspend": until resumed
+            toggle_suspended(controller, PANEL)  # "Suspend": until resumed
         else:
-            controller.set_override(OverrideKind.ACTIVATE, None)  # "Activate": until turned off
+            controller.set_override(OverrideKind.ACTIVATE, None, PANEL)  # "Activate": until turned off

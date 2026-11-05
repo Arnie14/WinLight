@@ -325,11 +325,11 @@ def test_a_failing_night_light_change_is_logged_and_the_next_press_works(app, mo
     real = app.controller.set_override
     calls = []
 
-    def failing_once(kind, until=None):
+    def failing_once(kind, until=None, source=""):
         calls.append(kind)
         if len(calls) == 1:
             raise RuntimeError("the gamma ramp is busy")
-        real(kind, until)
+        real(kind, until, source)
 
     monkeypatch.setattr(app.controller, "set_override", failing_once)
     events.hotkeyPressed.emit(1)

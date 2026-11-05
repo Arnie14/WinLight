@@ -82,6 +82,9 @@ FADE_STEP_S = 0.08
 # Who asked for a level. USER and SCHEDULE are choices (remembered);
 # RESTORE and IDLE are unprompted (checked for standby first, not remembered).
 USER, SCHEDULE, RESTORE, IDLE = "user", "schedule", "restore", "idle"
+# The user's own levels are logged once they settle: a drag, or a held
+# key, is one line with the level it ended on (testers' reports).
+CHOSEN_LOG_SETTLE_MS = 1500
 
 
 # --- Service: the worker side -------------------------------------------------
@@ -756,6 +759,9 @@ class MonitorManager(QObject):
         # key -> (the level to give it once on SDR brightness, the detection it was found at)
         self._after_hdr_lock: dict[str, tuple[int | None, int]] = {}
         self._verify_timer = QTimer(self, singleShot=True, interval=VERIFY_DELAY_MS)
+        self._chosen: dict[str, int] = {}  # levels the user chose, not logged yet
+        self._chosen_timer = QTimer(self, singleShot=True, interval=CHOSEN_LOG_SETTLE_MS)
+        self._chosen_timer.timeout.connect(self._log_chosen)
         self._verify_timer.timeout.connect(self._verify)
         self._hdr_manual: Callable[[str], bool] = lambda _key: False
 
@@ -889,11 +895,22 @@ class MonitorManager(QObject):
         value = max(state.info.minimum, min(100, value))
         state.desired, state.desired_source = value, source
         self._written_at[key] = time.monotonic()
+        if source == USER:
+            self._chosen[key] = value
+            self._chosen_timer.start()  # again: logged once the level settles
         # brightnessSet first: it tells BrightnessMemory this level was
         # chosen, before anything else could make a pending restore undo it.
         self.brightnessSet.emit(key, value, source)
         self.displayChanged.emit(key)
         self._service.request_write(Write(key, value, source, require_awake=source != USER, fade=fade))
+
+    def _log_chosen(self) -> None:
+        """The levels the user chose, by the display's model name (never a
+        name the user gave it)."""
+        chosen, self._chosen = self._chosen, {}
+        if chosen:
+            names = {key: state.info.name for key, state in self.states.items()}
+            log.info("Brightness set by the user: %s", ", ".join(f"{names.get(key, 'a display')} {level}%" for key, level in chosen.items()))
 
     def fade_brightness(self, key: str, value: int) -> None:
         """Like set_brightness, the user's choice (the command line), but fading."""
@@ -952,6 +969,8 @@ class MonitorManager(QObject):
         for _due, timer in self._scheduled:
             timer.stop()
         self._verify_timer.stop()
+        self._chosen_timer.stop()
+        self._log_chosen()  # a level chosen just before quitting
         self._service.close()
         self._thread.join(SHUTDOWN_WAIT_S)
         if self._thread.is_alive() or self._service.stuck:

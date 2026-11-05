@@ -58,7 +58,7 @@ from nightlight.ui import reveal, theme
 from nightlight.ui.flyout import Flyout
 from nightlight.ui.night_light_text import night_light_status, toggle_night_light, toggle_suspended
 from nightlight.ui.prompt import Prompt
-from nightlight.ui.settings_window import SettingsWindow
+from nightlight.ui.settings_window import SettingsWindow, changed_settings
 from nightlight.ui.shortcut_overlay import ShortcutOverlay
 from nightlight.ui.tray import Tray
 from nightlight.ui.welcome import WelcomeWindow
@@ -307,7 +307,8 @@ class NightLightApp:
         # Windows' state first: the saved setting can say on where Windows has
         # no entry (the portable zip), and on to on would change nothing.
         self._read_autostart()
-        self._apply_settings(replace(self._config, general=replace(self._config.general, start_with_windows=on)))
+        self._apply_settings(replace(self._config, general=replace(self._config.general, start_with_windows=on)),
+                             "the welcome screen")
         if self._settings is not None:
             self._settings.take_start_with_windows(on)
 
@@ -552,10 +553,10 @@ class NightLightApp:
             self.monitors.retry()  # as the panel's button and `winlight-cli --refresh`
             self._show_shortcut_result(message="Detecting displays again")
         elif action == NIGHT_LIGHT:
-            toggle_night_light(self.controller)
+            toggle_night_light(self.controller, "a shortcut")
             self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
         elif action == SUSPEND:
-            toggle_suspended(self.controller)
+            toggle_suspended(self.controller, "a shortcut")
             self._show_shortcut_result(message=f"Night light: {night_light_status(self.controller)}")
         elif action == PANEL:
             if self.flyout.isVisible():
@@ -610,9 +611,11 @@ class NightLightApp:
         """The connected displays the user hid (found under older keys too)."""
         return frozenset(m.key for m in self.monitors.monitors if self._config.hidden(m.key))
 
-    def _apply_settings(self, new: config.AppConfig) -> None:
+    def _apply_settings(self, new: config.AppConfig, source: str = "Settings") -> None:
         old = self._config
         self._config = new
+        if changed := changed_settings(new, old):
+            log.info("Settings applied, from %s: %s", source, changed)  # names only, never values
         try:
             config.save(new, self._config_path)
         except OSError:

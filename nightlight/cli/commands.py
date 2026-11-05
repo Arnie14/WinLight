@@ -23,6 +23,8 @@ from nightlight.core.schedule import OverrideKind
 from nightlight.hardware.brightness import MonitorInfo
 from nightlight.ui.night_light_text import is_night_light_on, night_light_status, toggle_night_light
 
+CLI = "the command line"  # where night light was changed from, for the log
+
 log = logging.getLogger(__name__)
 
 ALL = "all"
@@ -106,17 +108,17 @@ class CommandHandler:
     def _night_light(self, action: str) -> dict:
         controller = self._controller
         if action == "toggle":
-            toggle_night_light(controller)  # as the keyboard shortcut: switched back, it follows the schedule
+            toggle_night_light(controller, CLI)  # as the keyboard shortcut: switched back, it follows the schedule
         elif action == "suspend":
-            controller.set_override(OverrideKind.SUSPEND, None)
+            controller.set_override(OverrideKind.SUSPEND, None, CLI)
         elif action == "resume":
-            controller.clear_override()
+            controller.clear_override(CLI)
         elif action == "on":
-            controller.set_override(OverrideKind.ACTIVATE, None)
+            controller.set_override(OverrideKind.ACTIVATE, None, CLI)
         elif action == "off":
-            controller.set_override(OverrideKind.SUSPEND, None)
+            controller.set_override(OverrideKind.SUSPEND, None, CLI)
         elif action == "auto":
-            controller.clear_override()
+            controller.clear_override(CLI)
         elif action != "status":
             raise _Error(f"Night light action must be on, off, toggle, suspend, resume, auto or status: not {action!r}.")
         return _ok(f"Night light: {night_light_status(controller)}", {"night_light": self._night_light_data()})

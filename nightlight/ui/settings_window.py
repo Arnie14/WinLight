@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -156,6 +156,24 @@ CLI_EXAMPLES = (
 )
 
 
+def changed_settings(config: AppConfig, saved: AppConfig) -> str:
+    """Which settings differ, by page and name, for the log: "Night Light
+    (night_temperature), General (theme)". Never their values: a city, app
+    names and display names are personal."""
+    by_page: dict[int, list[str]] = {}
+    for page, section in ((0, "night_light"), (1, "brightness_schedule")):
+        old, new = getattr(saved, section), getattr(config, section)
+        by_page[page] = [f.name for f in fields(new) if getattr(new, f.name) != getattr(old, f.name)]
+    if config.displays != saved.displays:
+        by_page[2] = ["display names or visibility"]
+    if config.shortcuts != saved.shortcuts:
+        by_page[3] = [f"{len(config.shortcuts)} shortcuts"]
+    for f in fields(config.general):
+        if getattr(config.general, f.name) != getattr(saved.general, f.name):
+            by_page.setdefault(GENERAL_PAGES.get(f.name, 4), []).append(f.name)
+    return ", ".join(f"{PAGES[page]} ({', '.join(names)})" for page, names in sorted(by_page.items()) if names)
+
+
 def changed_pages(config: AppConfig, saved: AppConfig) -> set[int]:
     """The pages (by index) whose settings differ from the saved ones."""
     pages = set()
@@ -265,7 +283,7 @@ class SettingsWindow(QWidget):
         self.banner_text = QLabel()
         self.banner_text.setWordWrap(True)
         self.banner_button = QPushButton()
-        self.banner_button.clicked.connect(controller.clear_override)
+        self.banner_button.clicked.connect(self._resume_from_banner)
         banner_layout.addWidget(self.banner_text, 1)
         banner_layout.addWidget(self.banner_button)
         self.banner.add(banner_row)
@@ -920,6 +938,9 @@ class SettingsWindow(QWidget):
         )
         return AppConfig(night_light=night_light, general=general, brightness_schedule=self.schedule.config(),
                          displays=self.displays.prefs(), shortcuts=self.shortcut_editor.shortcuts())
+
+    def _resume_from_banner(self) -> None:
+        self._controller.clear_override("Settings")
 
     def take_start_with_windows(self, on: bool) -> None:
         """Changed outside this window (the welcome screen's switch): saved

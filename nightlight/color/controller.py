@@ -203,14 +203,22 @@ class NightLightController(QObject):
         self._config = config
         self.update()
 
-    def set_override(self, kind: OverrideKind, until: datetime | None = None) -> None:
+    def set_override(self, kind: OverrideKind, until: datetime | None = None, source: str = "") -> None:
+        """`source`: where it was asked, for the log (testers' reports show
+        what was tried): "the tray menu", "the panel", "a shortcut"..."""
         self._override = Override(kind, until)
+        if kind is OverrideKind.SUSPEND:
+            what = "suspended " + (f"until {until:%Y-%m-%d %H:%M}" if until else "until resumed")
+        else:
+            what = "turned on " + (f"until {until:%Y-%m-%d %H:%M}" if until else "until turned off")
+        log.info("Night light %s%s", what, f", from {source}" if source else "")
         self.update()
 
-    def clear_override(self) -> None:
+    def clear_override(self, source: str = "") -> None:
         if self._override is None:
             return  # nothing to end: the ramps aren't written again
         self._override = None
+        log.info("Night light back to its schedule%s", f", from {source}" if source else "")
         self.update()
 
     def preview(self, kelvin: int | None) -> None:

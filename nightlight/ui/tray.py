@@ -18,6 +18,7 @@ from nightlight.ui.night_light_text import (
     paused_text,
 )
 
+TRAY = "the tray menu"  # where night light was changed from, for the log
 # The night light item's icon, by what it does now.
 OVERRIDE_GLYPHS = {"Suspend": icons.pause_glyph, "Resume": icons.play_glyph, "Activate": icons.moon_glyph,
                    "Turn Off": icons.sun_glyph}
@@ -49,7 +50,7 @@ class Tray(QSystemTrayIcon):
         # a KDE-style "Suspend Night Light" check item stood beside it, so the
         # menu read "Suspend Night Light" twice, each doing something else.
         self._override_action = self._menu.addAction("")
-        self._override_action.triggered.connect(controller.clear_override)
+        self._override_action.triggered.connect(self._resume)
         self._menu.addSeparator()
         self._settings_action = self._menu.addAction("Settings…", self.configureRequested.emit)
         self._report_action = self._menu.addAction("Report a Problem…", self.diagnosticsRequested.emit)
@@ -68,6 +69,9 @@ class Tray(QSystemTrayIcon):
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.flyoutRequested.emit(self.geometry())
+
+    def _resume(self) -> None:
+        self._controller.clear_override(TRAY)  # "Resume" or "Turn Off"
 
     def _open_panel(self) -> None:
         # Once the menu has gone: a popup opened as it closes can close with it.
@@ -92,7 +96,7 @@ class Tray(QSystemTrayIcon):
 
     def _update_menu(self) -> None:
         # "Suspend ▸" / "Activate ▸" with KDE's durations, or "Resume" / "Turn Off".
-        label = build_override_menu(self._controller, self._override_menu)
+        label = build_override_menu(self._controller, self._override_menu, TRAY)
         self._override_action.setText(f"{label} Night Light")
         self._override_action.setMenu(None if self._override_menu.isEmpty() else self._override_menu)
         self._draw_glyphs()

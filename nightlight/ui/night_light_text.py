@@ -110,7 +110,7 @@ def can_suspend(controller: NightLightController) -> bool:
     return controller.config.enabled or controller.state.override is not None
 
 
-def toggle_night_light(controller: NightLightController) -> None:
+def toggle_night_light(controller: NightLightController, source: str = "") -> None:
     """Night light on or off until switched back; switching back returns to
     the schedule, rather than leaving an override that never ends (pressed
     twice in the day, the evening would otherwise never come). The keyboard
@@ -118,22 +118,22 @@ def toggle_night_light(controller: NightLightController) -> None:
     want_on = not is_night_light_on(controller)
     scheduled = compute_state(controller.config, controller.now(), None, controller.zone)
     if want_on == (scheduled.night_factor > 0):
-        controller.clear_override()
+        controller.clear_override(source)
     else:
-        controller.set_override(OverrideKind.ACTIVATE if want_on else OverrideKind.SUSPEND, None)
+        controller.set_override(OverrideKind.ACTIVATE if want_on else OverrideKind.SUSPEND, None, source)
 
 
-def toggle_suspended(controller: NightLightController) -> None:
+def toggle_suspended(controller: NightLightController, source: str = "") -> None:
     """KDE's Suspend and Resume: suspended until resumed by hand, at any
     time of day (in the day, the evening doesn't turn night light on), or
     resumed. Replaces a timed suspension or an activation."""
     if is_suspended(controller):
-        controller.clear_override()
+        controller.clear_override(source)
     else:
-        controller.set_override(OverrideKind.SUSPEND, None)
+        controller.set_override(OverrideKind.SUSPEND, None, source)
 
 
-def build_override_menu(controller: NightLightController, menu: QMenu) -> str:
+def build_override_menu(controller: NightLightController, menu: QMenu, source: str = "") -> str:
     """Fill `menu` with KDE's override choices; returns the button label.
 
     While an override is active the label is "Resume"/"Turn Off" and the menu
@@ -153,11 +153,11 @@ def build_override_menu(controller: NightLightController, menu: QMenu) -> str:
         until_label = "Until {day} morning"
         manual_label = "Until manually disabled"
 
-    menu.addAction("For 1 hour", lambda: controller.set_override(kind, controller.now() + timedelta(hours=1)))
+    menu.addAction("For 1 hour", lambda: controller.set_override(kind, controller.now() + timedelta(hours=1), source))
     if transition := next_transition(controller.config, now, to_night, zone=controller.zone):
         day = "this" if transition.start.date() == now.date() else "tomorrow"
-        menu.addAction(until_label.format(day=day), lambda: controller.set_override(kind, transition.start))
-    menu.addAction(manual_label, lambda: controller.set_override(kind, None))
+        menu.addAction(until_label.format(day=day), lambda: controller.set_override(kind, transition.start, source))
+    menu.addAction(manual_label, lambda: controller.set_override(kind, None, source))
     return label
 
 
