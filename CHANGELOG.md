@@ -4,7 +4,20 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 
 ## 0.8.0 Beta 2 (unreleased)
 
+### Added
+
+- **The welcome screen lists your displays**, each with how Winlight controls it (DDC/CI, the laptop's brightness, Windows' brightness for SDR content), what to do for one that doesn't answer DDC/CI, and a note where HDR is on: Windows doesn't let night light tint a display in HDR.
+- **It finds more tools that clash:** Iris, CareUEyes, ClickMonitorDDC, Dell Display Manager and LG OnScreen Control, besides f.lux, LightBulb, Twinkle Tray and Monitorian.
+- **It says when Windows hides Winlight's tray icon** under ^ next to the clock, as Windows 11 does with every new tray icon, and opens the page to keep it on the taskbar. Winlight only reads where Windows keeps the icon; it never moves it.
+- **It offers to start Winlight when you sign in** where it doesn't yet (the portable zip has no sign-in entry), with the same switch as Settings.
+- **The log says when Winlight quits, and why** (the tray menu, `--quit` from the installer or a script, Windows ending the session), and that it finished cleanly. A log that simply stopped looked the same as a crash or a power cut.
+
 ### Changed
+
+- **Running the installer over an installed Winlight says it's an update**: which version is installed and which replaces it, keeping your settings, with an **Update** button. It always updated the same install in place; its pages just looked like a first install's.
+- **An update replaces the app's files rather than adding to them.** Files an older version shipped and the new one doesn't were left behind (52 files, 17 MB, after a change of Python version on the test laptop), and an old system file there could have been loaded in place of Windows' own. Your settings are kept elsewhere and aren't touched.
+- **A Winlight running from the portable zip is asked to quit** before the installed one starts at the end of Setup. The new one used to find it running, open its panel and exit, so the old version kept running until the next sign-in.
+- **The welcome screen's cards scroll on a short screen**, the buttons staying in view: with several displays and tips it was taller than a 1366×768 laptop's screen.
 
 - **The tray icon's menu is simpler and looks like Windows 11's.** It said "Suspend Night Light" twice: a check item (suspend until resumed) and a submenu (for an hour, until the evening, or until resumed), each doing something else; at noon it offered to suspend a night light that was off. There is now one Night Light item, named for what it does now: Suspend ▸ or Activate ▸, or Resume or Turn Off while one of those is on. **Open Winlight** comes first, in bold as Windows marks the default, and opens the panel, as clicking the icon does. Each item has an icon, drawn like Settings' own, and the menu follows Windows' light or dark taskbar. Suspending until resumed during the day, so that the evening wouldn't turn night light on, is no longer in the menu: turn night light off in Settings for that.
 - **Report a Problem's box looks like Settings' questions**, with Show File, Open GitHub Issues and Close along its foot, rather than an old-style message box.

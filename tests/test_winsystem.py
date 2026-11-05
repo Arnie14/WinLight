@@ -122,6 +122,61 @@ def test_off_windows_these_report_nothing(monkeypatch):
     assert winsystem.foreground_app() is None
     assert winsystem.running_apps() == []
     assert winsystem.windows_night_light_on() is None
+    assert winsystem.tray_icon_hidden() is None
+
+
+class FakeIconRegistry:
+    """Explorer's NotifyIconSettings records, as winreg reads them: a list of
+    (ExecutablePath, IsPromoted or None for no value)."""
+
+    HKEY_CURRENT_USER = object()
+
+    def __init__(self, icons):
+        self.icons = icons
+
+    def OpenKey(self, parent, name):
+        import contextlib
+
+        if parent is self.HKEY_CURRENT_USER:
+            if self.icons is None:
+                raise OSError("no such key")  # Windows 10
+            return contextlib.nullcontext("root")
+        return contextlib.nullcontext(self.icons[int(name)])
+
+    def EnumKey(self, _root, index):
+        if index >= len(self.icons):
+            raise OSError("no more")
+        return str(index)
+
+    def QueryValueEx(self, icon, name):
+        path, promoted = icon
+        if name == "IsPromoted" and promoted is None:
+            raise OSError("no value")
+        return (path if name == "ExecutablePath" else promoted), 4
+
+
+@pytest.mark.parametrize(("icons", "hidden"), [
+    (None, None),  # no records at all (Windows 10)
+    ([], None),  # not recorded yet: a new icon
+    ([(r"C:\Tools\Other.exe", 1)], None),
+    ([(r"C:\Apps\Winlight\Winlight.exe", None)], True),  # a new icon: under ^
+    ([(r"c:\apps\winlight\WINLIGHT.EXE", 0)], True),  # paths compare as Windows does
+    ([(r"C:\Apps\Winlight\Winlight.exe", 1)], False),  # turned on under Other system tray icons
+    ([(r"C:\Apps\Winlight\Winlight.exe", 0), (r"C:\Apps\Winlight\Winlight.exe", 1)], False),  # an older record too
+])
+def test_whether_windows_keeps_the_tray_icon_under_the_arrow(monkeypatch, icons, hidden):
+    monkeypatch.setattr(winsystem.sys, "platform", "win32")
+    monkeypatch.setitem(sys.modules, "winreg", FakeIconRegistry(icons))
+    assert winsystem.tray_icon_hidden(r"C:\Apps\Winlight\Winlight.exe") is hidden
+
+
+def test_a_tray_icon_recorded_under_program_files_known_folder_is_found(monkeypatch):
+    """Explorer writes Program Files as its known-folder id, not a path."""
+    monkeypatch.setattr(winsystem.sys, "platform", "win32")
+    monkeypatch.setenv("ProgramW6432", r"C:\Program Files")
+    record = (r"{6D809377-6AF0-444B-8957-A3773F02200E}\Winlight\Winlight.exe", None)
+    monkeypatch.setitem(sys.modules, "winreg", FakeIconRegistry([record]))
+    assert winsystem.tray_icon_hidden(r"C:\Program Files\Winlight\Winlight.exe") is True
 
 
 @pytest.mark.parametrize(

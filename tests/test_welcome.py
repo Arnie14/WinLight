@@ -15,13 +15,14 @@ from nightlight.color.controller import NightLightController
 from nightlight.config import AppConfig, DisplayPrefs, GeneralConfig, Mode, NightLightConfig
 from nightlight.hardware import create_backends
 from nightlight.hardware.brightness import MonitorInfo
-from nightlight.ui.welcome import WelcomeWindow, findings, when_text
+from nightlight.ui.welcome import WelcomeWindow, display_lines, findings, tray_tip, when_text
 
 NOON = datetime(2026, 11, 4, 12, tzinfo=UTC)
 PANEL = MonitorInfo(0, "Built-in display", True, key="AUO24ED", internal=True, channel="wmi")
 DELL = MonitorInfo(1, "DELL U2720Q", True, key="DEL41A2", channel="ddc")
 TV = MonitorInfo(2, "SAMSUNG", True, key="SAM7136", channel="software", control="software")
 OLD = MonitorInfo(3, "Old monitor", False, key="ACI0001", reason="DDC/CI didn't answer")
+HDR = MonitorInfo(4, "LG ULTRAGEAR", True, key="GSM5BBF", channel="sdr", control="sdr", hdr=True)
 
 
 class FakeGamma:
@@ -37,24 +38,47 @@ def names(found):
 
 
 def test_nothing_found_on_a_pc_where_nothing_clashes():
-    assert findings(False, {"explorer.exe", "winlight.exe"}, [PANEL, DELL], lambda m: m.name) == []
+    assert findings(False, {"explorer.exe", "winlight.exe"}) == []
 
 
 def test_windows_night_light_on_comes_first_with_a_way_to_turn_it_off():
-    [found] = findings(True, set(), [], lambda m: m.name)
+    [found] = findings(True, set())
     assert found.title == "Windows Night Light is on" and found.url == "ms-settings:nightlight" and found.action
 
 
 def test_other_tools_running_are_named_with_what_to_do():
-    found = findings(None, {"flux.exe", "twinkle tray.exe", "monitorian.exe", "lightbulb.exe", "notepad.exe"}, [], lambda m: m.name)
+    found = findings(None, {"flux.exe", "twinkle tray.exe", "monitorian.exe", "lightbulb.exe", "notepad.exe"})
     assert names(found) == ["f.lux is running", "LightBulb is running", "Twinkle Tray is running", "Monitorian is running"]
     assert all(f.description for f in found)
 
 
-def test_external_displays_without_ddc_ci_are_named_by_the_users_name_for_them():
-    found = findings(None, set(), [PANEL, DELL, TV, OLD], lambda m: {"SAM7136": "Living room TV"}.get(m.key, m.name))
-    assert names(found) == ["Living room TV doesn't answer DDC/CI", "Old monitor doesn't answer DDC/CI"]
-    assert "dimmed through its colors" in found[0].description and "dimmed" not in found[1].description
+def test_the_other_tools_the_installer_notes_name_are_found_too():
+    """The installer's notes list these as clashing; the welcome screen found
+    only four. ClickMonitorDDC's program carries its version in its name."""
+    found = findings(None, {"iris.exe", "careueyes.exe", "clickmonitorddc_7_2.exe", "ddpm.exe", "onscreen control.exe"})
+    assert names(found) == ["Iris is running", "CareUEyes is running", "ClickMonitorDDC is running",
+                            "Dell Display Manager is running", "LG OnScreen Control is running"]
+    assert names(findings(None, {"ddm.exe", "ddpm.exe"})) == ["Dell Display Manager is running"]  # one tool, named once
+    assert findings(None, {"clickmonitorddc.txt", "irisx.exe", "my iris.exe"}) == []
+
+
+def test_every_display_is_listed_with_how_it_is_controlled():
+    lines = display_lines([PANEL, DELL, TV, OLD, HDR], lambda m: {"SAM7136": "Living room TV"}.get(m.key, m.name))
+    assert names(lines) == ["Built-in display", "DELL U2720Q", "Living room TV", "Old monitor", "LG ULTRAGEAR"]
+    panel, dell, tv, old, hdr = (line.description for line in lines)
+    assert panel.startswith("Laptop brightness") and dell.startswith("DDC/CI")
+    assert "dimmed through its colors" in tv and "Turn on DDC/CI" in tv
+    assert "no brightness control" in old and "Turn on DDC/CI" in old
+    assert "SDR content" in hdr and "can't tint it until HDR is off" in hdr  # Windows applies no gamma ramp in HDR
+    assert hdr.count("HDR is on") == 1 and not any("HDR is on" in text for text in (panel, dell, tv, old))
+    assert panel == ("Laptop brightness: the built-in display's backlight, as the laptop's brightness keys and Windows' "
+                     "slider set it.")  # the panel's caption and its tooltip, as one sentence
+
+
+def test_the_tray_icon_tip_only_when_windows_hides_the_icon():
+    assert tray_tip(None) is None and tray_tip(False) is None  # can't tell, or on the taskbar: nothing to say
+    tip = tray_tip(True)
+    assert "under ^" in tip.title and tip.url == "ms-settings:taskbar" and tip.action
 
 
 @pytest.mark.parametrize(("night_light", "says"), [
@@ -89,12 +113,15 @@ def test_the_window_shows_its_findings_and_looks_again_when_things_change():
     try:
         window.show()  # it looks again only while shown (see the next test)
         assert window.found == ["f.lux is running"]
+        assert [name for name, _how in window.displays] == ["Built-in display"]
         window.set_windows_night_light(True)
         assert window.found == ["Windows Night Light is on", "f.lux is running"]
         programs.clear()
         monitors.monitors = [PANEL, TV]
         monitors.monitorsChanged.emit(monitors.monitors)  # detection found the TV
-        assert window.found == ["Windows Night Light is on", "TV doesn't answer DDC/CI"]
+        assert window.found == ["Windows Night Light is on"]
+        assert [name for name, _how in window.displays] == ["Built-in display", "TV"]  # the user's name for it
+        assert "Turn on DDC/CI" in window.displays[1][1]
         window.set_windows_night_light(False)
         monitors.monitors = [PANEL]
         monitors.monitorsChanged.emit(monitors.monitors)
@@ -211,4 +238,116 @@ def test_a_closed_welcome_screen_doesnt_look_at_anything():
         assert looked and window.found == ["Windows Night Light is on"]
     finally:
         window.close()
+        controller.shutdown()
+
+
+def test_the_tray_tip_shows_when_the_icon_is_hidden_and_looks_again_if_it_cant_tell_yet():
+    """Explorer records a new tray icon a moment after it appears: at the
+    first start the welcome screen can look before it has."""
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    hidden = {"now": None}
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL]), tray_hidden=lambda: hidden["now"])
+    try:
+        window.show()
+        window.refresh()
+        assert window.found == ["Nothing here clashes with Winlight"] and window._tray_recheck.isActive()
+        hidden["now"] = True  # recorded now, under ^
+        window._tray_recheck.timeout.emit()
+        assert window.found == ["Nothing here clashes with Winlight", "Winlight's icon is under ^ next to the clock"]
+        hidden["now"] = False  # the user turned it on under Other system tray icons
+        window.refresh()
+        assert window.found == ["Nothing here clashes with Winlight"]
+    finally:
+        window.close()
+        controller.shutdown()
+
+
+def test_starting_at_sign_in_is_offered_where_it_is_off_and_stays_while_turned_on():
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    state, turned = {"on": False}, []
+
+    def turn(on):
+        turned.append(on)
+        state["on"] = on
+
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL]),
+                           starts_at_sign_in=lambda: state["on"], start_at_sign_in=turn)
+    already = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL]),
+                            starts_at_sign_in=lambda: True, start_at_sign_in=turn)
+    try:
+        window.show()
+        window.refresh()
+        assert "Start Winlight when I sign in" in window.found and not window.sign_in.isChecked()
+        window.sign_in.click()
+        assert turned == [True]
+        window.refresh()  # on now, and still there: a switch mustn't vanish under the pointer
+        assert "Start Winlight when I sign in" in window.found and window.sign_in.isChecked() and window.sign_in.isVisible()
+        already.show()
+        already.refresh()
+        assert "Start Winlight when I sign in" not in already.found  # the installer's task: nothing to offer
+    finally:
+        window.close()
+        already.close()
+        controller.shutdown()
+
+
+def test_the_welcome_screens_sign_in_switch_starts_winlight_at_sign_in_as_settings_does(start, monkeypatch):
+    """The portable zip has no sign-in entry, though the saved setting can say
+    on: the switch reads Windows first, then turns it on; and Settings, if
+    open, takes the change, so its Apply doesn't put the old choice back."""
+    from nightlight.config import AppConfig as Config
+
+    class Entry:
+        def __init__(self):
+            self.enabled = False
+
+        def is_enabled(self):
+            return self.enabled
+
+        def set_enabled(self, on):
+            self.enabled = on
+
+    run, _busy = start
+    entry = Entry()
+    monkeypatch.setattr(app_module.autostart, "create", lambda: entry)
+    night_light = run(fresh=False, general=GeneralConfig(start_minimized=True, start_with_windows=True))
+    night_light.show_settings()
+    night_light.show_welcome()
+    welcome = night_light._welcome
+    assert "Start Winlight when I sign in" in welcome.found
+    welcome.sign_in.click()
+    assert entry.enabled and night_light._config.general.start_with_windows
+    settings = night_light._settings
+    assert settings._saved.general.start_with_windows and settings.start_with_windows.isChecked()
+    assert isinstance(settings.current_config(), Config) and settings.current_config() == settings._saved  # nothing unsaved
+
+
+def test_on_a_short_screen_the_cards_scroll_and_the_buttons_stay_in_view(monkeypatch):
+    """Four displays and three tips need about 910 px; a 1366x768 laptop
+    shows about 730: the window was taller than the screen, its buttons off it."""
+    from nightlight.ui import welcome
+
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    monkeypatch.setattr(welcome.WelcomeWindow, "_screen_height", lambda self: 728)
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL, DELL, TV, OLD, HDR]),
+                           programs=lambda: {"flux.exe", "iris.exe"}, tray_hidden=lambda: True,
+                           starts_at_sign_in=lambda: False, start_at_sign_in=lambda on: None)
+    tall = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL, DELL, TV, OLD, HDR]),
+                         programs=lambda: {"flux.exe", "iris.exe"}, tray_hidden=lambda: True)
+    try:
+        window.show()
+        window.refresh()
+        assert window.height() <= 728 - welcome.SCREEN_ALLOWANCE
+        assert window.scroll.height() < window._cards.layout().totalHeightForWidth(welcome.WIDTH - 56)  # it scrolls
+        assert window.done.isVisible() and window.done.geometry().bottom() < window.height()
+        monkeypatch.setattr(welcome.WelcomeWindow, "_screen_height", lambda self: 2000)
+        tall.show()
+        tall.refresh()
+        assert tall.scroll.height() == tall._cards.layout().totalHeightForWidth(welcome.WIDTH - 56)  # room: no scrolling
+    finally:
+        window.close()
+        tall.close()
         controller.shutdown()

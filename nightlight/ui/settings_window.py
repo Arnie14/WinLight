@@ -919,6 +919,12 @@ class SettingsWindow(QWidget):
         return AppConfig(night_light=night_light, general=general, brightness_schedule=self.schedule.config(),
                          displays=self.displays.prefs(), shortcuts=self.shortcut_editor.shortcuts())
 
+    def take_start_with_windows(self, on: bool) -> None:
+        """Changed outside this window (the welcome screen's switch): saved
+        here too, so Apply doesn't put the old choice back."""
+        self._saved = replace(self._saved, general=replace(self._saved.general, start_with_windows=on))
+        self.start_with_windows.setChecked(on and self.start_with_windows.isEnabled())
+
     def set_windows_night_light(self, on: bool | None) -> None:
         """Show the notice while Windows' own Night Light is on too."""
         self.windows_night_light.setVisible(bool(on))

@@ -617,6 +617,63 @@ def windows_night_light_on() -> bool | None:
     return None
 
 
+# Explorer's record of each tray icon (Windows 11): where its program is, and
+# whether the user keeps it on the taskbar (IsPromoted = 1) or under ^ (0 or
+# none, as for every new icon). Not documented: only ever read, never written
+# (Explorer rewrites it, and where the icon goes is the user's choice).
+_NOTIFY_ICON_SETTINGS = r"Control Panel\NotifyIconSettings"
+# Folders Explorer writes as a known-folder id rather than a path.
+_KNOWN_FOLDERS = {
+    "{6D809377-6AF0-444B-8957-A3773F02200E}": "ProgramW6432",  # Program Files
+    "{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}": "ProgramFiles(x86)",
+}
+
+
+def tray_icon_hidden(executable: str | None = None) -> bool | None:
+    """Whether Windows keeps this program's tray icon under ^ rather than on
+    the taskbar. None if it can't tell: not Windows 11, no record yet (the
+    icon is new), or a layout Windows has since changed."""
+    if sys.platform != "win32":
+        return None
+    import ntpath
+    import os
+    import winreg
+
+    wanted = ntpath.normcase(ntpath.abspath(executable or sys.executable))
+    found = None
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _NOTIFY_ICON_SETTINGS) as root:
+            index = 0
+            while True:
+                try:
+                    name = winreg.EnumKey(root, index)
+                except OSError:
+                    break  # no more icons
+                index += 1
+                try:
+                    with winreg.OpenKey(root, name) as icon:
+                        path, _kind = winreg.QueryValueEx(icon, "ExecutablePath")
+                        try:
+                            promoted, _kind = winreg.QueryValueEx(icon, "IsPromoted")
+                        except OSError:
+                            promoted = 0
+                except OSError:
+                    continue
+                if not isinstance(path, str):
+                    continue
+                folder, _, rest = path.partition("\\")
+                if folder.upper() in _KNOWN_FOLDERS:
+                    path = ntpath.join(os.environ.get(_KNOWN_FOLDERS[folder.upper()], folder), rest)
+                if ntpath.normcase(path) != wanted:
+                    continue
+                if promoted == 1:
+                    return False  # on the taskbar (an older record of the same program may say otherwise)
+                found = True
+    except OSError:
+        return None
+    return found
+
+
 # --- The command pipe's other end ---------------------------------------------
 
 TOKEN_QUERY = 0x0008
