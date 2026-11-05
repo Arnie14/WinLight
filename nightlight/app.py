@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer, QTimeZone, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from nightlight import APP_NAME, config
 from nightlight.brightness.idle_dim import IdleDimmer
@@ -56,6 +56,7 @@ from nightlight.system.watcher import DisplayWatcher
 from nightlight.ui import reveal, theme
 from nightlight.ui.flyout import Flyout
 from nightlight.ui.night_light_text import night_light_status, toggle_night_light, toggle_suspended
+from nightlight.ui.prompt import Prompt
 from nightlight.ui.settings_window import SettingsWindow
 from nightlight.ui.shortcut_overlay import ShortcutOverlay
 from nightlight.ui.tray import Tray
@@ -146,6 +147,7 @@ class NightLightApp:
         self.commands = CommandHandler(self.monitors, self.controller, lambda: self._config, gamma)
         self._settings: SettingsWindow | None = None
         self._welcome: WelcomeWindow | None = None
+        self._report_box: Prompt | None = None  # where Report a Problem saved its file
         self._hints_path = config_path.with_name("hints.json")
         self._hints = _load_hints(self._hints_path)
         if first_start and WELCOME_HINT not in self._hints:
@@ -179,6 +181,7 @@ class NightLightApp:
             self.tray.display_name = self.flyout.display_name_of
             self.tray.set_scheduler(self.scheduler)
             self.tray.flyoutRequested.connect(self._open_flyout)
+            self.tray.panelRequested.connect(self._show_flyout)
             self.tray.configureRequested.connect(self.show_settings)
             self.tray.diagnosticsRequested.connect(self.report_problem)
             self.tray.messageClicked.connect(self._on_tray_message_clicked)
@@ -276,6 +279,13 @@ class NightLightApp:
         self._check_windows_night_light()
         self.flyout.toggle(anchor)
 
+    def _show_flyout(self, anchor=None) -> None:
+        """The tray menu's Open: opens the panel, where clicking the icon
+        toggles it (and a toggle just after the panel closed keeps it closed)."""
+        self._check_windows_night_light()
+        if not self.flyout.isVisible():
+            self.flyout.show_near(anchor)
+
     def _read_autostart(self) -> None:
         """Take "start when I sign in" from Windows: the installer, Task
         Manager or Windows' Settings may have changed it."""
@@ -356,32 +366,51 @@ class NightLightApp:
         return compat.render(self.compatibility(), compat.system_summary())
 
     def report_problem(self) -> None:
-        """Save a diagnostics zip to the Reports folder, copy a summary, and say where it is."""
+        """Save a diagnostics zip to the Reports folder, copy a summary, and say
+        where it is, in a box like Settings' questions: opened, not exec()'d,
+        so no nested event loop (it was an old-style message box until 0.8.0)."""
+        title = f"{APP_NAME}: Report a Problem"
         try:
             path, text = diagnostics.write_bundle(self._diagnostics_sources())
         except OSError as exc:
-            QMessageBox.warning(None, APP_NAME, f"Could not save the diagnostics: {exc}")
+            box = Prompt(None, title, "The diagnostics weren't saved", str(exc))
+            box.add_button("Close", "accent", default=True)
+            self._open_report_box(box)
             return
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(text)
         # Cleared later if it's still ours: nothing lingers on the clipboard.
         QTimer.singleShot(diagnostics.CLIPBOARD_MINUTES * 60_000, lambda: clipboard.text() == text and clipboard.clear())
-        box = QMessageBox(QMessageBox.Icon.Information, f"{APP_NAME}: Report a Problem", "")
-        box.setText(f"<b>Diagnostics saved</b><br>{path.name}, in {APP_NAME}'s Reports folder. A summary is on the clipboard.")
-        box.setInformativeText(
+        box = Prompt(None, title, "Diagnostics saved", (
+            f"{path.name}, in {APP_NAME}'s Reports folder. A summary is on the clipboard.\n\n"
             "To report the problem, open an issue on GitHub: describe what happened, paste the summary and attach the file "
             "(Show File opens its folder).\n\n"
             "Nothing personal is included (no names or location), and the folder isn't synced to the cloud. The file is "
-            f"deleted after {diagnostics.KEEP_DAYS} days and the clipboard is cleared after {diagnostics.CLIPBOARD_MINUTES} minutes."
-        )
-        show = box.addButton("Show File", QMessageBox.ButtonRole.ActionRole)
-        issue = box.addButton("Open GitHub Issues", QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Close)
-        reveal.fade_in(box)
-        box.exec()
-        if box.clickedButton() is show:
-            _reveal(path)
-        elif box.clickedButton() is issue:
+            f"deleted after {diagnostics.KEEP_DAYS} days and the clipboard is cleared after {diagnostics.CLIPBOARD_MINUTES} minutes."))
+        box.path = path
+        box.show_file = box.add_button("Show File", "accent", default=True)
+        box.open_issues = box.add_button("Open GitHub Issues")
+        box.add_button("Close")
+        self._open_report_box(box)
+
+    def _open_report_box(self, box: Prompt) -> None:
+        if self._report_box is not None:
+            self._report_box.close()  # a second report: its box replaces the first
+        box.finished.connect(self._report_answered)
+        self._report_box = box
+        reveal.show_window(box)
+
+    def _report_answered(self, _result: int) -> None:
+        box, self._report_box = self._report_box, None
+        if box is None:
+            return
+        box.deleteLater()
+        clicked = box.clicked
+        if clicked is None:
+            return  # Esc, or replaced by the next report's box
+        if clicked is getattr(box, "show_file", None):
+            _reveal(box.path)
+        elif clicked is getattr(box, "open_issues", None):
             QDesktopServices.openUrl(QUrl(diagnostics.ISSUES_URL))
 
     def handle_request(self, request: dict, reply) -> None:

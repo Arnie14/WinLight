@@ -80,27 +80,77 @@ def test_tooltip_leaves_out_a_schedule_that_is_off(tray):
     assert "Brightness" not in tray.toolTip()
 
 
-def test_suspend_is_a_toggle_until_resumed(tray):
-    """KDE's Suspend: checked, night light stays off until it is unchecked."""
+EVENING, NOON = datetime(2026, 6, 15, 21, 30, tzinfo=UTC), datetime(2026, 6, 15, 12, tzinfo=UTC)
+SCHEDULED = NightLightConfig(enabled=True, mode=Mode.TIMES, night_start="20:00", day_start="07:00")
+
+
+def menu_in(config, now, override=None):
+    """The tray's menu as it opens: its visible items, and the tray."""
     from nightlight.core.schedule import OverrideKind
 
-    controller = tray._controller
-    tray._update_menu()
-    suspend = tray._suspend_action
-    assert suspend.isVisible() and not suspend.isChecked()
-    suspend.trigger()
-    assert controller.override.kind is OverrideKind.SUSPEND and controller.override.until is None
-    tray._update_menu()
-    assert suspend.isChecked() and not tray._override_action.isVisible()  # unchecking it is how to resume
-    suspend.trigger()
-    assert controller.override is None
-    tray._update_menu()
-    assert not suspend.isChecked() and tray._override_action.isVisible()
-
-
-def test_nothing_to_suspend_while_night_light_is_off():
-    controller = NightLightController(FakeGamma(), NightLightConfig(), lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
+    controller = NightLightController(FakeGamma(), config, lambda: now)
+    if override is not None:
+        controller.set_override(OverrideKind[override], None)
     tray = Tray(controller)
+    tray._menu.aboutToShow.emit()
+    return [a for a in tray._menu.actions() if a.isVisible() and not a.isSeparator()], tray
+
+
+@pytest.mark.parametrize(("config", "now", "override", "item", "choices"), [
+    (SCHEDULED, EVENING, None, "Suspend Night Light", ["For 1 hour", "Until tomorrow evening", "Until manually resumed"]),
+    (SCHEDULED, NOON, None, "Activate Night Light", ["For 1 hour", "Until tomorrow morning", "Until manually disabled"]),
+    (SCHEDULED, EVENING, "SUSPEND", "Resume Night Light", []),
+    (SCHEDULED, NOON, "ACTIVATE", "Turn Off Night Light", []),
+    (NightLightConfig(), NOON, None, "Activate Night Light", ["For 1 hour", "Until tomorrow morning", "Until manually disabled"]),
+])
+def test_the_menu_has_one_night_light_item_saying_what_it_does_now(config, now, override, item, choices):
+    """Until 0.8.0 a KDE-style "Suspend Night Light" check item stood beside
+    the Suspend ▸ submenu, so the menu said the same thing twice, each doing
+    something else; at noon it offered to suspend a night light that was off."""
+    items, tray = menu_in(config, now, override)
+    texts = [a.text() for a in items]
+    assert len(texts) == len(set(texts)), texts  # nothing named twice, in any state
+    assert texts == ["Open Winlight", item, "Settings…", "Report a Problem…", "Quit"]
+    submenu = tray._override_action.menu()
+    assert ([a.text() for a in submenu.actions()] if submenu is not None else []) == choices
+    assert all(not a.icon().isNull() for a in items)  # each with its icon, as Windows 11's menus have
+    tray._controller.shutdown()
+
+
+@pytest.mark.parametrize(("now", "override"), [(EVENING, "SUSPEND"), (NOON, "ACTIVATE")])
+def test_resume_and_turn_off_go_back_to_the_schedule(now, override):
+    _items, tray = menu_in(SCHEDULED, now, override)
+    tray._override_action.trigger()
+    assert tray._controller.override is None
+    tray._controller.shutdown()
+
+
+def test_open_is_the_default_item_and_opens_the_panel_once_the_menu_has_gone(tray):
+    from PySide6.QtTest import QTest
+
+    received = []
+    tray.panelRequested.connect(received.append)
+    assert tray._menu.defaultAction() is tray._open_action  # bold, as Windows marks what clicking the icon does
+    tray._open_action.trigger()
+    assert received == []  # not while the menu is still closing
+    for _ in range(100):
+        if received:
+            break
+        QTest.qWait(10)
+    assert len(received) == 1
+
+
+def test_the_icons_follow_the_menus_text_colour(tray):
+    """Drawn in the menu's text colour, again only when that changes: Qt's
+    Windows 11 style gives the tray menu Windows' own light or dark look."""
+    from PySide6.QtGui import QColor, QPalette
+
     tray._update_menu()
-    assert not tray._suspend_action.isVisible() and tray._override_action.text() == "Activate Night Light"
-    controller.shutdown()
+    before = tray._settings_action.icon().cacheKey()
+    tray._update_menu()
+    assert tray._settings_action.icon().cacheKey() == before  # same colour: not drawn again
+    palette = tray._menu.palette()
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#123456"))
+    tray._menu.setPalette(palette)
+    tray._update_menu()
+    assert tray._glyph_color == QColor("#123456") and tray._settings_action.icon().cacheKey() != before

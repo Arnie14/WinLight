@@ -65,7 +65,7 @@ The log is also written to `%LOCALAPPDATA%\WinLight\Logs\WinLight.log`; its path
 - [ ] Hover over the icon: "Winlight", "Night Light: …" with the status, the brightness schedule's level while that schedule is on, and any display night light is paused on.
 - [ ] Left-click: the panel opens just above the taskbar, its right edge in line with the icon (or in the corner by the clock), about 12 px from it.
 - [ ] Click the icon again: the panel closes and doesn't reopen. Click on the desktop or another window: it closes. Press Esc: it closes.
-- [ ] Right-click: Suspend or Activate, Settings…, Report a Problem… and Quit.
+- [ ] Right-click: **Open Winlight** in bold (it opens the panel), one Night Light item (Suspend ▸ or Activate ▸, or Resume or Turn Off while one of those is on), Settings…, Report a Problem… and Quit, each with an icon, and no item named twice. The menu is light or dark with Windows' taskbar.
 - [ ] With night light off, the panel's **Activate** button shows its text and its arrow apart: clicking it turns night light on until you turn it off; its arrow offers set times.
 - [ ] Settings, from the tray menu and from the panel's ⚙, in dark mode: no white flash. Maximize the window, then restore it: it returns to its smaller size, inside the screen.
 - [ ] Set the taskbar to auto-hide: the panel still opens next to it.

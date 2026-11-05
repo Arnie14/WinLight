@@ -220,6 +220,65 @@ def keyboard_glyph(color: QColor) -> QIcon:
     return _icon(draw)
 
 
+def pause_glyph(color: QColor) -> QIcon:
+    """Two bars, for "Suspend Night Light"."""
+
+    def draw(painter: QPainter) -> None:
+        pen = QPen(color, 5)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawRoundedRect(QRectF(17, 13, 10, 38), 3, 3)
+        painter.drawRoundedRect(QRectF(37, 13, 10, 38), 3, 3)
+
+    return _icon(draw)
+
+
+def play_glyph(color: QColor) -> QIcon:
+    """A triangle pointing right, for "Resume Night Light"."""
+
+    def draw(painter: QPainter) -> None:
+        pen = QPen(color, 5)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPolygon([QPointF(21, 13), QPointF(50, 32), QPointF(21, 51)])
+
+    return _icon(draw)
+
+
+def power_glyph(color: QColor) -> QIcon:
+    """A power symbol, for "Quit"."""
+
+    def draw(painter: QPainter) -> None:
+        pen = QPen(color, 5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(QRectF(13, 15, 38, 38), 125 * 16, 290 * 16)  # open at the top
+        painter.drawLine(QPointF(32, 9), QPointF(32, 31))
+
+    return _icon(draw)
+
+
+def report_glyph(color: QColor) -> QIcon:
+    """A speech bubble with an exclamation mark, for "Report a Problem…"."""
+
+    def draw(painter: QPainter) -> None:
+        bubble = QPainterPath()
+        bubble.addRoundedRect(QRectF(8, 9, 48, 36), 7, 7)
+        tail = QPainterPath()
+        tail.addPolygon([QPointF(18, 42), QPointF(18, 56), QPointF(32, 42)])
+        pen = QPen(color, 5)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawPath(bubble.united(tail))
+        painter.drawLine(QPointF(32, 18), QPointF(32, 29))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(QPointF(32, 37), 3.2, 3.2)
+
+    return _icon(draw)
+
+
 def _icon(draw: Callable[[QPainter], None]) -> QIcon:
     """Draw at each size the tray may ask for (16-32 px depending on DPI)
     rather than letting Windows shrink one large image into a blur."""

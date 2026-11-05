@@ -230,7 +230,6 @@ def test_nothing_sleeps_on_the_main_thread():
 
 NESTED_LOOPS_ALLOWED = {
     ("main.py", "exec"): "the application's own event loop",
-    ("nightlight/app.py", "exec"): "Report a Problem's message box, opened from a menu",
 }
 
 

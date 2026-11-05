@@ -597,18 +597,17 @@ def test_the_theme_is_applied(start, monkeypatch):
 
 def test_report_a_problem_clears_its_summary_from_the_clipboard_later(start, monkeypatch, tmp_path):
     from PySide6.QtGui import QGuiApplication
-    from PySide6.QtWidgets import QMessageBox
 
     night_light, _ = start(GeneralConfig())
     monkeypatch.setattr(app_module.diagnostics, "write_bundle", lambda sources: (tmp_path / "Winlight-diagnostics-x.zip", "the summary"))
     timers = []
     monkeypatch.setattr(app_module.QTimer, "singleShot", lambda ms, *target: timers.append((ms, target[-1])))
-    monkeypatch.setattr(QMessageBox, "exec", lambda self: shown.append(self.text() + self.informativeText()))
-    shown = []
     night_light.report_problem()
+    box = night_light._report_box
+    assert box.title.text() == "Diagnostics saved" and "deleted after 7 days" in box.message.text()
+    box.close()
     clipboard = QGuiApplication.clipboard()
     assert clipboard.text() == "the summary"
-    assert "deleted after 7 days" in shown[0] and "Diagnostics saved" in shown[0]
     ms, clear = next(timer for timer in timers if timer[0] == 10 * 60_000)
     clear()
     assert clipboard.text() == ""
@@ -616,6 +615,54 @@ def test_report_a_problem_clears_its_summary_from_the_clipboard_later(start, mon
     clear()
     assert clipboard.text() == "something the user copied since"  # not ours: left alone
     clipboard.clear()
+
+
+def test_report_a_problems_box_is_opened_not_waited_for_and_shows_the_file(start, monkeypatch, tmp_path):
+    """It was a message box run with exec(), an event loop inside the app's
+    own (the design rules allow none); now opened like Settings' questions."""
+    from PySide6.QtGui import QGuiApplication
+
+    night_light, _ = start(GeneralConfig())
+    saved = tmp_path / "Winlight-diagnostics-x.zip"
+    monkeypatch.setattr(app_module.diagnostics, "write_bundle", lambda sources: (saved, "the summary"))
+    revealed = []
+    monkeypatch.setattr(app_module, "_reveal", revealed.append)
+    night_light.report_problem()  # returns at once, the box open
+    first = night_light._report_box
+    assert first.isVisible()
+    night_light.report_problem()  # a second report's box replaces the first
+    assert not first.isVisible() and revealed == []
+    night_light._report_box.show_file.click()
+    assert revealed == [saved] and night_light._report_box is None
+    QGuiApplication.clipboard().clear()
+
+
+def test_report_a_problem_says_when_it_could_not_save(start, monkeypatch):
+    def full(_sources):
+        raise OSError("There is not enough space on the disk")
+
+    night_light, _ = start(GeneralConfig())
+    monkeypatch.setattr(app_module.diagnostics, "write_bundle", full)
+    night_light.report_problem()
+    box = night_light._report_box
+    assert box.title.text() == "The diagnostics weren't saved" and "not enough space" in box.message.text()
+    box.close()
+    assert night_light._report_box is None
+
+
+def test_the_tray_menus_open_always_opens_the_panel(start):
+    """Clicking the icon toggles the panel, and keeps it closed just after it
+    closed (the click that closed it); the menu's Open item only opens it."""
+    from PySide6.QtCore import QRect
+
+    night_light, _ = start(GeneralConfig(start_minimized=True))
+    night_light.flyout.show_near(None)
+    night_light.flyout.hide()  # just now: a toggle would keep it closed
+    night_light.tray.panelRequested.emit(QRect())
+    assert night_light.flyout.isVisible()
+    night_light.tray.panelRequested.emit(QRect())  # open already: stays open
+    assert night_light.flyout.isVisible()
+    night_light.flyout.hide()
 
 
 def test_the_power_plans_brightness_isnt_followed_while_it_is_put_back(start, monkeypatch):
