@@ -327,6 +327,46 @@ def test_closing_settings_with_changes_and_pressing_esc_keeps_editing(window, mo
     window._close_discard.click()
 
 
+# --- The logo ("Dusk screen") ----------------------------------------------------------------------
+
+
+def test_the_logo_is_drawn_for_every_size_windows_asks_for():
+    from nightlight.ui import icons
+
+    for night in (True, False):
+        icon = icons.app_icon(night=night)
+        assert sorted(size.width() for size in icon.availableSizes()) == sorted(icons._PIXMAP_SIZES)
+
+
+def test_the_logos_night_and_day_differ_and_small_sizes_are_simplified():
+    from nightlight.ui import icons
+
+    def image(night, size):
+        return icons.app_icon(night=night).pixmap(size, size).toImage()
+
+    night, day = image(True, 48), image(False, 48)
+    assert night.pixelColor(24, 14) != day.pixelColor(24, 14)  # a dusk sky by night, a pale one by day
+    assert night.pixelColor(24, 39).alpha() > 0  # the stand's foot, at larger sizes...
+    assert image(True, 16).pixelColor(8, 15).alpha() == 0  # ...left out at 16 px, where the screen fills the width
+    assert image(True, 16).pixelColor(1, 6).alpha() > 0
+
+
+def test_the_app_uses_the_logo_and_the_night_light_card_keeps_moon_and_sun():
+    """The tray, windows and installer show Winlight's logo; the panel's
+    Night Light card shows night light's own state as a moon or a sun."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    uses = {}
+    for path in [*root.joinpath("nightlight").rglob("*.py"), root / "main.py", root / "packaging" / "make_icon.py"]:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "icons":
+                uses.setdefault(node.attr, set()).add(path.name)
+    assert uses["night_icon"] == uses["day_icon"] == {"flyout.py"}
+    assert {"main.py", "make_icon.py", "tray.py", "settings_window.py", "welcome.py"} <= uses["app_icon"]
+
+
 def test_an_app_list_is_as_tall_as_its_apps():
     apps = AppList(list, installed=list)
     assert not apps.empty.isHidden() and apps.list.isHidden() and apps._remove.isHidden()

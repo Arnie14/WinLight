@@ -69,7 +69,7 @@ def use_scheme(app: QApplication, dark: bool) -> None:
 
 def main(out: Path) -> None:
     app = QApplication(sys.argv)
-    app.setWindowIcon(icons.night_icon())
+    app.setWindowIcon(icons.app_icon())
     out.mkdir(parents=True, exist_ok=True)
     monitors = MonitorManager(FakeBrightnessBackend(latency=0))
     controller = NightLightController(FakeGammaBackend(), NIGHT_LIGHT, clock=lambda: EVENING)

@@ -61,7 +61,7 @@ python main.py --debug
 The log is also written to `%LOCALAPPDATA%\WinLight\Logs\WinLight.log`; its path is printed at start. The first start of a version from 0.3.0 renames an existing `%LOCALAPPDATA%\night-light` folder to `WinLight` (the log says "Renamed the settings folder"), keeping its settings.
 
 - [ ] First start with no settings yet (rename `%LOCALAPPDATA%\WinLight` first, and back after): the welcome screen opens, unless a fullscreen game or video is in front, when it waits for the next start. It names what is running and clashes: start f.lux or Twinkle Tray, or turn Windows Night Light on, and click Settings > General > Welcome screen > Show again: they are listed, each with what to do. Starting a second time doesn't show it.
-- [ ] A sun or moon icon appears in the tray, sharp at your scaling and readable on a light and a dark taskbar. Repeat the checks below with the icon in the overflow (^) area too.
+- [ ] Winlight's icon appears in the tray (a small display with the sun in it: setting at dusk while night light is on, high in a pale sky while it's off), sharp at your scaling and readable on a light and a dark taskbar. Repeat the checks below with the icon in the overflow (^) area too.
 - [ ] Hover over the icon: "Winlight", "Night Light: …" with the status, the brightness schedule's level while that schedule is on, and any display night light is paused on.
 - [ ] Left-click: the panel opens just above the taskbar, its right edge in line with the icon (or in the corner by the clock), about 12 px from it.
 - [ ] Click the icon again: the panel closes and doesn't reopen. Click on the desktop or another window: it closes. Press Esc: it closes.
@@ -228,7 +228,7 @@ Settings > Brightness > **Change brightness by time of day**:
 With a build from [Releases](https://github.com/Arnie14/WinLight/releases), or the Actions tab's `winlight-windows` artifact. Quit any copy run from source first.
 
 - [ ] Run `Winlight-<version>-setup.exe`. SmartScreen may warn; note whether it does. There is **no administrator prompt**; it installs to `%LOCALAPPDATA%\Programs\Winlight`. The first page explains the beta and what clashes.
-- [ ] The installer, the Start menu entry and `Winlight.exe` show the Winlight moon icon. `Winlight.exe` > Properties > Details: product name Winlight, a numeric file version (for example `0.7.5.2001`) and the product version (`0.7.5-beta.1`).
+- [ ] The installer, the Start menu entry and `Winlight.exe` show Winlight's icon (a display with the sun setting in it). `Winlight.exe` > Properties > Details: product name Winlight, a numeric file version (for example `0.7.5.2001`) and the product version (`0.7.5-beta.1`).
 - [ ] "Launch Winlight" starts it: tray icon only, no console window. The taskbar button (with Settings open) shows Winlight's icon, not Python's.
 - [ ] Settings > Location: the city list is filled (the time zone table was bundled). The app looks like the source version.
 - [ ] The app folder has `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`; Settings > General > About > View notices opens the notices.

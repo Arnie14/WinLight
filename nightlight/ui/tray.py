@@ -59,7 +59,7 @@ class Tray(QSystemTrayIcon):
 
     def _update(self) -> None:
         controller = self._controller
-        self.setIcon(icons.night_icon() if is_night_light_on(controller) else icons.day_icon())
+        self.setIcon(icons.app_icon(night=is_night_light_on(controller)))
         paused = paused_text(controller, self.display_name)
         brightness = brightness_status(self._scheduler)
         self.setToolTip(f"{APP_NAME}\nNight Light: {night_light_status(controller)}" + (f"\nBrightness: {brightness}" if brightness else "")

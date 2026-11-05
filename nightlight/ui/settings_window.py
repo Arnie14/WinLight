@@ -245,7 +245,7 @@ class SettingsWindow(QWidget):
         self._ribbon_config = self._saved.night_light  # what the day ribbon shows
         self._brightness_ribbon_config = (self._saved.brightness_schedule, location_of(self._saved.night_light))
         self.setWindowTitle(f"{APP_NAME} Settings")
-        self.setWindowIcon(icons.night_icon())
+        self.setWindowIcon(icons.app_icon())
 
         self._build_controls(can_autostart)
         self._stack = QStackedWidget()
@@ -836,7 +836,7 @@ class SettingsWindow(QWidget):
         layout.addWidget(SectionLabel("About"))
         about = Card()
         about.add(SettingRow(f"{APP_NAME} {display_version()}", "Brightness and night light for every display. "
-                             "Free software, licensed under the GPL-3.0", icon=icons.night_icon()))
+                             "Free software, licensed under the GPL-3.0", icon=icons.app_icon()))
         self.github = QPushButton("View on GitHub")
         self.github.setToolTip(REPO_URL)
         self.github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REPO_URL)))
@@ -1310,7 +1310,7 @@ class SettingsWindow(QWidget):
         self.location.setCurrentIndex(self.location.findData(place.zone))
 
     def _update_header_icon(self) -> None:
-        icon = icons.night_icon() if is_night_light_on(self._controller) else icons.day_icon()
+        icon = icons.app_icon(night=is_night_light_on(self._controller))
         self._header_icon.setPixmap(icon.pixmap(HEADER_ICON, HEADER_ICON))
 
     def _update_status(self) -> None:

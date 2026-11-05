@@ -94,7 +94,7 @@ def main() -> int:
     set_app_id()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
-    app.setWindowIcon(icons.night_icon())
+    app.setWindowIcon(icons.app_icon())
     # Before any monitor thread starts: garbage holding Qt objects must never
     # be collected on one of them (nightlight/gc_guard.py).
     MainThreadGarbageCollector(app)

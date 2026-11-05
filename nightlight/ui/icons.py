@@ -7,14 +7,85 @@ import math
 from collections.abc import Callable
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QTransform
+from PySide6.QtGui import QColor, QGradient, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QTransform
 
 _SIZE = 64  # drawing coordinates
 _PIXMAP_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)  # tray sizes up to taskbar and Alt+Tab
 
+# Winlight's logo, "Dusk screen": a display with the sun setting inside it.
+# Night: the sun half down behind the screen's lower edge, in a dusk sky; day:
+# high in a pale one. The app's icon (windows, installer, Start menu) is the
+# night one; the tray shows whichever is on. At 24 px and below the screen
+# fills the square, without its stand, as Fluent icons simplify small sizes.
+_LOGO_SIZE = 256  # drawing coordinates
+_SMALL = 24  # px and below: the simplified drawing
+_INDIGO, _VIOLET, _DEEP = QColor("#2B2A6B"), QColor("#6A46B8"), QColor("#1E1D4A")
+_CANDLE, _AMBER, _EMBER = QColor("#FFD98A"), QColor("#FFB23E"), QColor("#FF6F2E")
+_SKY_DEEP, _SKY_LIGHT = QColor("#4F8FE8"), QColor("#DCEEFF")
+_STAND = QColor("#8C90A8")
+
+
+def app_icon(night: bool = True) -> QIcon:
+    """Winlight's logo: at night (the app's own icon), or by day (the tray while night light is off)."""
+    icon = QIcon()
+    for size in _PIXMAP_SIZES:
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.scale(size / _LOGO_SIZE, size / _LOGO_SIZE)
+        _draw_logo(painter, night, small=size <= _SMALL)
+        painter.end()
+        icon.addPixmap(pixmap)
+    return icon
+
+
+def _vertical(top: QColor, bottom: QColor) -> QLinearGradient:
+    """Top to bottom of whatever it fills."""
+    gradient = QLinearGradient(0, 0, 0, 1)
+    gradient.setCoordinateMode(QGradient.CoordinateMode.ObjectBoundingMode)
+    gradient.setColorAt(0, top)
+    gradient.setColorAt(1, bottom)
+    return gradient
+
+
+def _draw_logo(painter: QPainter, night: bool, small: bool) -> None:
+    screen = QRectF(12, 34, 232, 168) if small else QRectF(22, 34, 212, 150)
+    radius = 30 if small else 26
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(_vertical(_INDIGO, _VIOLET) if night else _vertical(_SKY_DEEP, _SKY_LIGHT))
+    painter.drawRoundedRect(screen, radius, radius)
+    if night:
+        # Half a sun on the screen's lower edge, and a glow along the horizon.
+        sun_radius = 62 if small else 52
+        horizon = screen.bottom() - 2
+        sun = QPainterPath(QPointF(128 - sun_radius, horizon))
+        sun.arcTo(QRectF(128 - sun_radius, horizon - sun_radius, 2 * sun_radius, 2 * sun_radius), 180, -180)
+        sun.closeSubpath()
+        painter.setBrush(_vertical(_CANDLE, _EMBER))
+        painter.drawPath(sun)
+        glow = QColor(_EMBER)
+        glow.setAlphaF(0.55)
+        painter.setBrush(glow)
+        painter.drawRect(QRectF(screen.left() + 18, screen.bottom() - 4, screen.width() - 36, 4))
+    else:
+        sun_radius = 40 if small else 30
+        painter.setBrush(_vertical(_CANDLE, _AMBER))
+        painter.drawEllipse(QPointF(128, screen.top() + screen.height() * 0.48), sun_radius, sun_radius)
+    if not small:
+        painter.setBrush(_STAND)
+        painter.drawRect(QRectF(114, screen.bottom(), 28, 22))
+        painter.drawRoundedRect(QRectF(76, screen.bottom() + 20, 104, 14), 7, 7)
+    # A fine edge, as Fluent icons have: light on the dusk screen, dark on the pale one (on light taskbars).
+    edge = QColor("#FFFFFF" if night else _DEEP.name())
+    edge.setAlphaF(0.16 if night else 0.28)
+    painter.setPen(QPen(edge, 8 if small else 3))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(screen, radius, radius)
+
 
 def night_icon() -> QIcon:
-    """A crescent moon."""
+    """A crescent moon: night light on, in the panel's Night Light card."""
 
     def draw(painter: QPainter) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
@@ -27,7 +98,7 @@ def night_icon() -> QIcon:
 
 
 def day_icon() -> QIcon:
-    """A sun."""
+    """A sun: night light off, in the panel's Night Light card."""
 
     def draw(painter: QPainter) -> None:
         color = QColor("#f2a93b")

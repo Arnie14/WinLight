@@ -12,7 +12,7 @@ Tell us your setup in the issue: Windows version, laptop or desktop, and each di
 - [ ] Run `Winlight-<version>-setup.exe`. If SmartScreen says "Windows protected your PC", choose **More info → Run anyway** (the beta isn't code-signed yet).
 - [ ] The first page explains the beta, what clashes with Winlight and what to turn off; read it.
 - [ ] No administrator prompt appears. "Start Winlight when I sign in" is ticked; optionally tick "Add winlight-cli to PATH".
-- [ ] At the end, "Launch Winlight" starts it: a sun or moon icon appears in the tray (check the ^ overflow area), and no console window opens.
+- [ ] At the end, "Launch Winlight" starts it: Winlight's icon appears in the tray (a small display with the sun in it) (check the ^ overflow area), and no console window opens.
 - [ ] On a first install, the welcome screen opens: today's night light, when it comes on, and anything on your PC that would clash with Winlight (Windows Night Light on, f.lux, LightBulb, Twinkle Tray or Monitorian running, a monitor without DDC/CI), each with what to do. Note anything it gets wrong. It doesn't open again at the next start; Settings > General > Welcome screen shows it again.
 
 ## 2. The panel

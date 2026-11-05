@@ -34,7 +34,7 @@ def write_ico(path: Path) -> None:
     app = QGuiApplication.instance() or QGuiApplication([])  # noqa: F841, pixmaps need one
     from nightlight.ui import icons
 
-    icon = icons.night_icon()
+    icon = icons.app_icon()  # the logo at night: the app's own icon
     images = [(size, png_bytes(icon, size)) for size in SIZES]
     offset = 6 + 16 * len(images)
     header = struct.pack("<HHH", 0, 1, len(images))

@@ -101,7 +101,7 @@ class WelcomeWindow(QWidget):
         self._open_settings = open_settings
         self._windows_night_light: bool | None = None
         self.setWindowTitle(f"Welcome to {APP_NAME}")
-        self.setWindowIcon(icons.night_icon())
+        self.setWindowIcon(icons.app_icon())
         self.setFixedWidth(WIDTH)
 
         layout = QVBoxLayout(self)
