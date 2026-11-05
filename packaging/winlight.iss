@@ -70,7 +70,8 @@ Name: "{autodesktop}\Winlight"; Filename: "{app}\Winlight.exe"; AppUserModelID: 
 ; unsigned program adding itself to the Run key looks like malware setting
 ; itself up to persist to Microsoft Defender (Behavior:Win32/Persistence.A!ml).
 ; The app's setting only switches it on and off, as Task Manager does.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Winlight"; ValueData: """{app}\Winlight.exe"""; Flags: uninsdeletevalue; Tasks: startup
+; An update writes it only where it still is (see KeepStartupEntry).
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Winlight"; ValueData: """{app}\Winlight.exe"""; Flags: uninsdeletevalue; Tasks: startup; Check: KeepStartupEntry
 ; The user's own PATH, so no administrator rights are needed; removed again on uninstall.
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NotOnPath(ExpandConstant('{app}'))
 
@@ -209,6 +210,25 @@ begin
         WizardForm.FinishedLabel.Caption := 'Winlight is updated to ' + ShownVersion('{#AppVersion}') +
           '. Your settings are as you left them.';
   end;
+end;
+
+{ Whether to write the start-at-sign-in entry. A first install: the task
+  decides. An update: the entry is written again where it still is, but one
+  removed since (with Autoruns, say) while the task stayed ticked isn't
+  brought back, as f.lux's installer does at every update. Ticking the task
+  now, where it wasn't ticked last time, still adds it. Turning it off in
+  Settings or Task Manager keeps the entry (only its switch changes), so that
+  choice is kept either way. }
+function KeepStartupEntry(): Boolean;
+var
+  Previous: String;
+begin
+  Result := True;
+  if (InstalledVersion = '') or RegValueExists(HKEY_CURRENT_USER, RunKey, 'Winlight') then
+    exit;
+  if RegQueryStringValue(HKCU, UninstallKey, 'Inno Setup: Selected Tasks', Previous) and
+     (Pos(',startup,', ',' + Lowercase(Previous) + ',') > 0) then
+    Result := False;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

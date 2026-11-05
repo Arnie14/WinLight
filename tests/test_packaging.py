@@ -126,6 +126,19 @@ def test_setup_quits_a_copy_running_from_elsewhere_before_starting_the_new_one()
     assert "procedure QuitAnyOtherCopy();\nbegin\n  QuitRunningCopy(ExpandConstant('{app}\\Winlight.exe'));" in script
 
 
+def test_an_update_doesnt_bring_back_a_start_up_entry_removed_since():
+    """f.lux's installer re-adds its start-up entry at every update, even
+    after users removed it. Winlight's writes it on an update only where it
+    still is, or where the task is ticked now and wasn't last time."""
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    entry = next(line for line in script.splitlines() if line.startswith("Root: HKCU") and "CurrentVersion\\Run" in line)
+    assert "Tasks: startup; Check: KeepStartupEntry" in entry
+    keep = script.split("function KeepStartupEntry(): Boolean;")[1].split("\nend;\n")[0]
+    assert "(InstalledVersion = '') or RegValueExists(HKEY_CURRENT_USER, RunKey, 'Winlight')" in keep  # a first install, or still there
+    assert "'Inno Setup: Selected Tasks'" in keep and "',startup,'" in keep  # ticked last time, and gone since
+    assert script.index("InstalledVersion: String;") < script.index("function KeepStartupEntry")  # declared before use
+
+
 def test_checksums_are_written_as_sha256sum_reads_them(tmp_path):
     import hashlib
 
