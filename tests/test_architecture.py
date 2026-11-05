@@ -402,6 +402,33 @@ def test_only_the_command_line_parts_print():
     assert not rule_print(TREES)
 
 
+def rule_reads_what_is_in_first(trees) -> list[str]:
+    """Each blocking wait for socket data sits in a condition that first asks
+    what is buffered (bytesAvailable)."""
+    found = []
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "waitForReadyRead"):
+                continue
+            condition, child = None, node
+            while (parent := getattr(child, "parent", None)) is not None and not isinstance(parent, ast.stmt):
+                child = parent
+            if isinstance(parent, (ast.If, ast.While)) and child is parent.test:
+                condition = parent.test
+            asks = condition is not None and any(isinstance(n, ast.Attribute) and n.attr == "bytesAvailable" for n in ast.walk(condition))
+            if not asks:
+                found.append(f"{where(path, node)} waitForReadyRead() without checking bytesAvailable() first")
+    return found
+
+
+def test_a_wait_for_data_never_misses_data_already_in():
+    """waitForReadyRead waits for *new* data: an answer already taken in
+    (while the request was being written) is never announced again. The
+    command line waited 10 s and said Winlight didn't answer, holding its
+    answer (0.2.0 to 0.8.0 Beta 1; found by CI under load). Ask what is in first."""
+    assert not rule_reads_what_is_in_first(TREES)
+
+
 # --- Errors ----------------------------------------------------------------------------------------
 
 
@@ -541,6 +568,9 @@ BAD = {
     rule_bare_program_names: "import subprocess\nsubprocess.Popen(['explorer', '/select,', 'x'])\n",
     rule_paths_shown_to_others: "def show(folder):\n    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))\n",
     rule_concurrency_never_sleeps: "import pytest, time\npytestmark = pytest.mark.concurrency\ndef test_x():\n    time.sleep(0.1)\n",
+    rule_reads_what_is_in_first: ("def request(socket):\n    reply = b''\n"
+                                  "    while not reply.endswith(b'\\n') and socket.waitForReadyRead(10000):\n"
+                                  "        reply += bytes(socket.readAll().data())\n"),
 }
 
 
