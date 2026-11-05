@@ -18,7 +18,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QStandardPaths, Qt, QTime, QTimer, QTimeZone, QUrl, Signal
+from PySide6.QtCore import QEvent, QSize, QStandardPaths, Qt, QTime, QTimer, QTimeZone, QUrl, Signal
 from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -60,7 +60,7 @@ from nightlight.hardware.gamma import GammaBusy
 from nightlight.ui import icons
 from nightlight.ui import theme as theme_module
 from nightlight.ui.day_ribbon import BrightnessDay, DayRibbon
-from nightlight.ui.night_light_text import is_night_light_on, night_light_status, schedule_description
+from nightlight.ui.night_light_text import night_light_status, schedule_description
 from nightlight.ui.preview_notice import PreviewNotice
 from nightlight.ui.prompt import Prompt
 from nightlight.ui.schedule_editor import ScheduleEditor
@@ -90,7 +90,9 @@ PAGE_RIGHT = 32
 # Controls on the right of the cards share widths, so they end on one line.
 WIDE_FIELD = 300
 NARROW_FIELD = 120
-HEADER_ICON = 48
+# The logo beside the name: Winlight's own, at dusk, whatever night light
+# does; only the tray icon follows it.
+HEADER_ICON = 64
 PREFERRED_SIZE = (960, 760)
 # Kept free around the window on small screens; the title bar's height,
 # which Qt's sizes leave out.
@@ -356,7 +358,6 @@ class SettingsWindow(QWidget):
         controller.changed.connect(self._update_status)
         controller.changed.connect(self._update_windows_limit)  # a limit is learnt when Windows refuses a ramp
         self.night_temperature.valueChanged.connect(self._update_windows_limit)
-        controller.changed.connect(self._update_header_icon)
         if scheduler is not None:
             scheduler.changed.connect(self._update_schedule_status)
         if monitors is not None:
@@ -369,7 +370,6 @@ class SettingsWindow(QWidget):
             button.setEnabled(report is not None)
         self.refresh_displays.setEnabled(monitors is not None)
 
-        self._update_header_icon()
         self._load(self._saved)
         self._update_windows_limit()
         self._update_displays()
@@ -406,6 +406,8 @@ class SettingsWindow(QWidget):
         identity.setSpacing(12)
         self._header_icon = QLabel()
         self._header_icon.setFixedSize(HEADER_ICON, HEADER_ICON)
+        self._logo = icons.app_icon()
+        self._draw_header_icon()
         name = QVBoxLayout()
         name.setSpacing(2)
         title = QLabel(APP_NAME)
@@ -942,6 +944,7 @@ class SettingsWindow(QWidget):
             self._placed = True
             self._fit_to_screen()
         super().showEvent(event)
+        self._draw_header_icon()  # on this screen, at its scaling
         # Opening, Qt gives focus back to the entry used last; the current one takes it.
         self._nav[self.current_page()].setFocus(Qt.FocusReason.OtherFocusReason)
 
@@ -1323,9 +1326,9 @@ class SettingsWindow(QWidget):
             return
         self.location.setCurrentIndex(self.location.findData(place.zone))
 
-    def _update_header_icon(self) -> None:
-        icon = icons.app_icon(night=is_night_light_on(self._controller))
-        self._header_icon.setPixmap(icon.pixmap(HEADER_ICON, HEADER_ICON))
+    def _draw_header_icon(self) -> None:
+        """At the scaling of the screen it opens on, so it stays sharp at 150% too."""
+        self._header_icon.setPixmap(self._logo.pixmap(QSize(HEADER_ICON, HEADER_ICON), self.devicePixelRatioF()))
 
     def _update_status(self) -> None:
         self.now_status.setText(f"Now: {night_light_status(self._controller)}")

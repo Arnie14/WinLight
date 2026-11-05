@@ -539,6 +539,26 @@ def test_report_a_problem_from_the_about_card():
     controller.shutdown()
 
 
+def test_the_header_shows_the_logo_at_dusk_whatever_night_light_does():
+    """Only the tray icon follows night light: everywhere else Winlight has
+    one logo, its dusk one (the header switched to the day one too, which
+    blurred the app's identity)."""
+    from PySide6.QtCore import QSize
+
+    from nightlight.core.schedule import OverrideKind
+    from nightlight.ui import icons
+    from nightlight.ui.settings_window import HEADER_ICON
+
+    controller = NightLightController(FakeGamma(), KYIV, lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
+    window = SettingsWindow(controller, AppConfig(KYIV))
+    dusk = icons.app_icon().pixmap(QSize(HEADER_ICON, HEADER_ICON), window.devicePixelRatioF()).toImage()
+    assert HEADER_ICON == 64 and window._header_icon.size() == QSize(64, 64)
+    for override in (OverrideKind.ACTIVATE, OverrideKind.SUSPEND):
+        controller.set_override(override, None)
+        assert window._header_icon.pixmap().toImage() == dusk
+    controller.shutdown()
+
+
 def test_the_about_card_ends_with_a_note_that_asks_what_the_license_asks():
     """A request, not a restriction: Winlight is GPL-3.0, which lets anyone
     copy and change it; the note mustn't say otherwise ("don't copy")."""
