@@ -191,4 +191,17 @@ Measurements and results on the test laptop: HP ZBook Studio G5, Windows 11 25H2
 - WMI reads and writes leave no reference cycles; one WMI connection leaves 51 objects in cycles, COM objects among them, which are broken on their own thread at release.
 - Windows accepts gamma ramps with a small dip (64 to 1000 of 65535 tried) and reads them back exactly. Software dimming at 25% left behind, with and without a tint, with the journal lost, is recognised and replaced by the display's own ramp at the next start; before 0.7.5 it stayed.
 - `tools/hardware_checks.py` repeats these checks on any Windows PC.
-- **Not yet tried on real hardware:** external DDC/CI monitors, TVs, HDR displays, hotplug, linked sliders, the laptop-key follower.
+- **Not yet tried on real hardware:** TVs, HDR displays, hotplug, linked sliders, the laptop-key follower. External DDC/CI monitors: see §13.
+
+## 13. Testers' hardware
+
+What testers' logs and Report a Problem zips showed, read against the code.
+
+**A laptop (AUO panel `AUO2EAE`, WMI) with a Dell P2419HC over HDMI**, Windows 11 25H2 (build 26200), Winlight 0.7.5 Beta 1 running two weeks without a restart: no crash, exception or stuck call; two warnings, both explained below.
+
+- **DDC/CI:** found 0.3 s after Winlight's backend started, through the direct VCP read (`vcp`), with its EDID identity, size, year and connector. It answered again after every one of 90 wakes and 113 screen-offs, typically 0–3 s after waking, 7 s at most. Levels set in Winlight (70, 67, 75, 59%) were what it reported after the following sleeps, so `Restoring … %d%% -> %d%%` never had to run.
+- **Error paths seen for real:** after waking, `0xC0262589` (a garbled answer) and `0x0000001F` (the driver failing the request) on the first reads; "Not answering yet, retrying" five times, back within 4–12 s; the high-level `GetMonitorBrightness` used instead five times when the VCP read stayed garbled, with the next detection on VCP again; `GetPhysicalMonitorsFromHMONITOR` failing with "Element not found" once, mid-wake, and a display whose EDID wasn't readable yet named by its model (`name:` key) until the next detection.
+- **Duplicate mode at waking:** Windows woke several times with the panel and the Dell duplicated on one source (Qt names that screen `|DELL P2419HC`, the panel's own name being empty), and switched to the Dell alone about 10 s later. The panel went through WMI and the Dell through DDC/CI; the source's other physical handle, the panel's, refused DDC/CI as expected.
+- **Sleep:** both kinds: suspend and resume messages (S3/hibernation), and Modern Standby, which sends only display off and on, the wake noticed from the clock. Windows syncs the clock as it wakes, and that hid some wakes from the clock check until 0.8.0 (§6).
+- **The two warnings:** "accepted 100% but reports 54%" on the first day, a few seconds after the panel was first opened, once; every later level held, so it is likely the monitor's own fade or mode, still to be asked about. "Going to sleep 23499 s ago, but it is still running" was the hidden-wake bug, fixed in 0.8.0.
+- **Not shown by this log:** night light (off for the two weeks), the brightness schedule, shortcuts, idle dimming, HDR, plugging in and out. Successful DDC/CI writes aren't logged, only mismatches, so writes are known from the levels read back after sleeping.

@@ -20,7 +20,7 @@ concurrency:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 30  # the suite takes about 10 minutes; a hang mustn't hold a machine for 6 hours
+    timeout-minutes: 30  # the suite takes a few minutes on the runner's cores; a hang mustn't hold a machine for 6 hours
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Test
         # Failures also appear as annotations on the run and the pull request.
-        run: python -m pytest -q --tb=short -ra --junitxml=test-results.xml
+        run: python -m pytest -q --tb=short -ra -n auto --dist loadgroup --junitxml=test-results.xml
 
       - name: Test counts
         if: always()

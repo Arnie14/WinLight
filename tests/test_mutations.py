@@ -120,6 +120,13 @@ MUTATIONS = [
      '''            summary += f" (stopped checking at +{after:.0f} s)"
             self._monitors.cancel_scheduled()''',
      ["tests/test_wake_report.py::test_stops_early_once_everyone_is_back_twice"]),
+    ("a display call returning just as it is given up on leaves the display stuck", "nightlight/brightness/monitors.py",
+     '''                    if returned.is_set():
+                        self._detect = True  # check on it again, as the clean-up would have
+                    else:
+                        self._hung[key] = what''',
+     "                    self._hung[key] = what",
+     ["tests/test_monitor_service.py::test_a_call_returning_just_as_it_is_given_up_on_doesnt_leave_its_display_stuck"]),
     ("Windows syncing the clock as it wakes hides the wake", "nightlight/system/watcher.py",
      "        self._clock_changed = True\n",
      "        self._clock_changed = True\n        self._last_ticks = self._ticks()\n",

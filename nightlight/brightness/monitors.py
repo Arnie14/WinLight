@@ -370,15 +370,22 @@ class MonitorService:
         """A backend call with a time limit. On timeout, `key`'s display is
         left alone until the call returns (or `on_late` runs then instead)."""
         self.busy = what
+        returned = threading.Event()  # set by the clean-up, under _cond
         if on_late is None and key:
-            on_late = lambda: self._call_returned(key)  # noqa: E731
+            on_late = lambda: self._call_returned(key, returned)  # noqa: E731
         started = time.perf_counter()
         try:
             result = self._runner.call(fn, timeout, what, on_late=on_late)
         except CallTimeout:
             if key:
                 with self._cond:
-                    self._hung[key] = what
+                    # A call can return just as it is given up on, its clean-up
+                    # running before this: marked stuck then, nothing would
+                    # ever clear it, and the display stayed "not responding".
+                    if returned.is_set():
+                        self._detect = True  # check on it again, as the clean-up would have
+                    else:
+                        self._hung[key] = what
                 log.info("%s [%s]: left alone until that call returns; the other displays carry on", what, key)
             raise  # the runner logs the time-out itself
         except Exception as exc:
@@ -391,8 +398,10 @@ class MonitorService:
         log.debug("%s%s: %s in %.0f ms", what, f" [{key}]" if key else "", _summary(result), 1000 * (time.perf_counter() - started))
         return result
 
-    def _call_returned(self, key: str) -> None:
+    def _call_returned(self, key: str, returned: threading.Event | None = None) -> None:
         with self._cond:
+            if returned is not None:
+                returned.set()
             if self._hung.pop(key, None) is not None:
                 self._detect = True  # check on it again
                 self._cond.notify()

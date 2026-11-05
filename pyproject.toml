@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.15", "hypothesis>=6.100"]
+dev = ["pytest>=8.0", "ruff>=0.15", "hypothesis>=6.100", "pytest-xdist>=3.6"]
 # Building the Windows app (packaging/build.py). Inno Setup 6 is installed
 # separately for the installer: https://jrsoftware.org/isdl.php
 build = ["pyinstaller>=6.10"]
@@ -45,12 +45,17 @@ testpaths = ["tests"]
 addopts = ["--strict-markers"]
 markers = [
     "concurrency: races staged one interleaving at a time, with gates and a fake clock (tests/fake_windows.py); never sleeps",
+    "slow: soak, property, mutation and whole-suite checks (tests/conftest.py's SLOW); pytest -m 'not slow' leaves them out while iterating",
 ]
 # An exception in a thread, or in a finalizer (__del__), fails the test that
 # caused it instead of being printed and forgotten.
 filterwarnings = [
     "error::pytest.PytestUnhandledThreadExceptionWarning",
     "error::pytest.PytestUnraisableExceptionWarning",
+    # Hypothesis checks with gc.get_referrers() that its own generator is kept,
+    # which can't see objects frozen after collection (conftest); it registers
+    # it anyway, and its thread-local state keeps it.
+    "ignore:It looks like `register_random` was passed an object:hypothesis.errors.HypothesisWarning",
 ]
 
 [tool.ruff]

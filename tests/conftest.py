@@ -34,6 +34,40 @@ def qapp():
     gc.enable()
 
 
+# Tests that use something there is one of per desktop, not per process: real
+# hotkeys (RegisterHotKey) and real key presses (SendInput), in child
+# processes. Run in parallel (pytest -n auto --dist loadgroup, as CI does),
+# they go to one worker, one after another, so two never hold the same keys.
+DESKTOP_WIDE = {"test_shortcuts.py", "test_shortcut_safeguards.py"}
+# The slow tier: soaks, random properties, mutation checks, and runs of the
+# suite inside a test; together about half the run's time in a tenth of its
+# tests. `pytest -n auto -m "not slow"` leaves them out while iterating; CI,
+# and every run before a commit or a release, runs everything.
+SLOW = {"test_mutations.py", "test_concurrency_and_soak.py", "test_settings_properties.py", "test_chaos.py",
+        "test_gamma_properties.py", "test_design.py"}
+
+
+def pytest_collection_modifyitems(config, items):
+    parallel = config.pluginmanager.hasplugin("xdist")
+    for item in items:
+        if item.path.name in SLOW:
+            item.add_marker(pytest.mark.slow)
+        if parallel and item.path.name in DESKTOP_WIDE:
+            item.add_marker(pytest.mark.xdist_group("desktop"))
+
+
+def pytest_collection_finish(session):
+    """Everything that exists once the tests are collected (modules, Qt's and
+    the test modules' classes, hypothesis) stays for the whole run: frozen,
+    the collections after each test look only at what tests made since, which
+    is what they are for. Each looked through every object in the process
+    otherwise: 166 ms a collection, two per test, about half the run."""
+    import gc
+
+    gc.collect()
+    gc.freeze()
+
+
 @pytest.fixture(autouse=True)
 def collect_qt_garbage():
     """After each test, delete its leftover Qt objects here, on the main thread

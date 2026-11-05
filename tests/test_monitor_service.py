@@ -29,7 +29,7 @@ from nightlight.brightness.monitors import (
     Write,
 )
 from nightlight.hardware.brightness import MonitorGoneError, MonitorInfo
-from nightlight.hardware.calls import CallRunner, InlineRunner
+from nightlight.hardware.calls import CallRunner, CallTimeout, InlineRunner
 
 
 class ScriptedBackend:
@@ -469,6 +469,44 @@ def test_a_display_with_a_stuck_call_is_listed_as_not_responding(short_timeouts)
     [info] = of(events, Detected)[-1].monitors
     assert not info.supported and info.status == "not responding"
     release.set()
+
+
+class ReturnsAsGivenUpOn(InlineRunner):
+    """The real runner's tightest moment, made certain: the first change to
+    a display is given up on, and returns (its clean-up runs) before the
+    service has handled the time-out."""
+
+    def __init__(self):
+        self.armed = True
+
+    def call(self, fn, timeout, what="", on_late=None):
+        if self.armed and what.startswith("setting the brightness"):
+            self.armed = False
+            fn()
+            if on_late is not None:
+                on_late()  # on the call's thread, as soon as it is abandoned
+            raise CallTimeout(what, timeout)
+        return super().call(fn, timeout, what, on_late)
+
+
+def test_a_call_returning_just_as_it_is_given_up_on_doesnt_leave_its_display_stuck():
+    """Found running the suite in parallel: a display stayed "not responding"
+    for good. The call's clean-up ran before its time-out was handled, found
+    nothing to clear, and the display was then marked as stuck, which only
+    that clean-up would have undone."""
+    backend = ScriptedBackend([("A", True)])
+    service, events, clock = make(backend, ReturnsAsGivenUpOn())
+    detect(service, clock)
+    service.request_write(Write("A", 10))
+    service.run_pending()
+    assert of(events, Failed)[-1].timeout
+    assert service._hung_call("A") is None  # it returned: nothing is stuck in it
+    detect(service, clock)
+    [info] = of(events, Detected)[-1].monitors
+    assert info.supported, info.status
+    service.request_write(Write("A", 12))
+    service.run_pending()
+    assert ("A", 12) in backend.sets()
 
 
 def test_a_hung_detection_is_bounded_and_retried(short_timeouts):

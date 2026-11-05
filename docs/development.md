@@ -58,10 +58,14 @@ Winlight targets Windows. On Linux, `pip install -e ".[dev]"` installs the `kde`
 ## Tests and lint
 
 ```powershell
-pytest
+pytest -n auto --dist loadgroup      # the whole suite, on every core: about 2 minutes on the test laptop
+pytest -n auto -m "not slow"         # while working: everything but the slow tier
 ruff check .
 ```
 
+- **Run everything before committing and before a release**; CI runs everything on every push. `-m "not slow"` leaves out the slow tier (soaks, random properties, mutation checks and runs of the suite inside a test, listed in `SLOW` in `tests/conftest.py`), about half the time in a tenth of the tests. `pytest` without `-n` runs the same tests one at a time, in about 8 minutes, and a single file or test is quickest that way.
+- **Running in parallel** (pytest-xdist) spreads the tests over several processes. Tests that use something there is one of per desktop (real hotkeys and key presses, in `DESKTOP_WIDE` in `tests/conftest.py`) stay together on one worker, so `--dist loadgroup` matters. A test that fails only in parallel depends on another test or on timing: that's a bug to find, not a reason to run it alone (running in parallel found a race in the monitor service before 0.8.0).
+- **Garbage collection after each test** (`conftest.py`) deletes the test's Qt objects on the main thread. Everything that exists once the tests are collected is frozen first (`gc.freeze()`), so each collection looks only at what tests made since: that took the suite from 19 to 8 minutes before running in parallel.
 - The suite runs the Windows backends against a fake of the Windows APIs, plus Windows-only tests of the real bindings: structure sizes and field offsets, `QueryDisplayConfig`, EDID identity, gamma ramps, DDC/CI handles, power notifications in a real window, the named pipe's ownership check. On Windows, the only expected skip is the Linux-only KDE backend's import.
 - `tests/test_imports.py` parses every import of the app's own modules, so a moved module or renamed name fails at once.
 - `tests/test_docs.py` lints the Markdown documents: headings, links and anchors that resolve, tables with matching columns, and the project's writing rules.
@@ -71,7 +75,7 @@ ruff check .
 - `tests/test_frontend_audit.py` checks every control in Settings and the panel for a name a screen reader can say, and other rules for the windows.
 - `tests/test_fault_injection.py` breaks what the gamma backend relies on (its journal file, Windows' display query) and checks each fault costs at most that piece of information. `tests/test_ddc_retries.py` follows a garbled DDC/CI message through the real retry loop, backend and queue.
 - `tests/test_mutations.py` checks that the tests guarding the most important safeguards fail when a safeguard breaks: each case copies the source to a temporary folder, breaks one safeguard there (never in the working tree) and runs its tests. When a safeguard's code is rewritten, its case says so; write its break again for the new code. Tools such as mutmut need `fork()`, which Windows doesn't have.
-- The full suite takes 10 to 15 minutes on the test laptop. `pytest -m concurrency`, or a single file, is quicker while working.
+- `pytest -m concurrency`, or a single file, is quicker still while working on one part.
 - `tests/conftest.py` fails a test that raises inside a Qt slot, makes Qt print a warning, leaves a non-daemon thread running, or raises in a thread or a finalizer; a test running past 300 s ends the run with every thread's stack (`WINLIGHT_TEST_WATCHDOG_S` changes it). `tests/test_suite_guards.py` checks each guard. A new setting must be added to `EVERY_SETTING` in `tests/test_design.py`.
 - Ruff's rules are in `pyproject.toml` under `[tool.ruff.lint]`, and the pytest markers under `[tool.pytest.ini_options]`. CI runs both on every push and pull request, and reports each run's test counts in its summary.
 

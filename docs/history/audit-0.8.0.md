@@ -29,7 +29,9 @@ Before Beta 1, a tester's two weeks of 0.7.5 Beta 1 on a laptop with a Dell P241
 | `brightness/wake_report` | Passes left over when the PC slept again joined the earlier wake's report ("+29100 s"). | Reports only |
 | `brightness/monitors` | "Ignores DDC/CI changes" was logged once per run, which lasts weeks. | Reports only |
 
-Each has a test replaying the log's sequence, and two more cases in `tests/test_mutations.py` (20 in all). Night light, the brightness schedule and shortcuts weren't used in that log; the tester is trying them next.
+Each has a test replaying the log's sequence, and two more cases in `tests/test_mutations.py`.
+
+**Found by running the suite in parallel**, once in two runs, under load: in `brightness/monitors.MonitorService._call`, a display call that returned at the moment it was given up on ran its clean-up before the time-out was handled; the clean-up found nothing to clear, and the display was then marked as having a stuck call, which only that clean-up undid. It stayed "Not responding" until Winlight restarted. The clean-up now records that the call returned, under the lock the time-out takes. A test makes the moment certain with a runner that returns the call as it gives up, and a mutation case breaks the fix (21 cases in all). Night light, the brightness schedule and shortcuts weren't used in that log; the tester is trying them next.
 
 ## Tests added
 

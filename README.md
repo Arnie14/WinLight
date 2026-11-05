@@ -10,7 +10,7 @@ Brightness is set over DDC/CI for external monitors, through WMI for laptop pane
   <img src="docs/screenshots/flyout-dark.png" alt="The Winlight panel in dark mode" width="340">
 </p>
 
-**[Download the latest release](https://github.com/Arnie14/WinLight/releases/latest)** · Windows 11, 64-bit · Beta: the laptop panel, night light, the schedules and the app are tested; external monitors, TVs and HDR displays are being tested now ([status of each feature](docs/features.md)).
+**[Download the latest release](https://github.com/Arnie14/WinLight/releases/latest)** · Windows 11, 64-bit · Beta: the laptop panel, night light, the schedules and the app are tested; external monitors over DDC/CI have been tested by testers, and more monitors, TVs and HDR displays are being tested now ([status of each feature](docs/features.md)).
 
 ## What it manages
 
@@ -44,6 +44,10 @@ Brightness tools for Windows usually manage monitor brightness, color tools mana
 
 The installer's first page lists what else can clash with Winlight. Settings and logs are kept in `%LOCALAPPDATA%\WinLight`. Winlight doesn't connect to the internet, unless you turn on **Check for updates** (Settings > General), which asks GitHub once a day whether a newer version is out.
 
+## Performance
+
+Winlight is a light tray app: about 50 MB of memory and about 0.5% of one processor core while idle, with night light, pausing and idle dimming on; night light is on screen about half a second after it starts. Monitors aren't polled over DDC/CI: they are only talked to when something changes. [What it does in the background, and how it was measured](docs/performance.md).
+
 ## Reporting a problem
 
 Right-click the tray icon and choose **Report a Problem…**. Winlight saves a zip with its logs, settings and what it knows about each display to its Reports folder, copies a summary to the clipboard, and shows the file. Reports are meant to be posted publicly, so your user name, computer name, home folder and email addresses are replaced with placeholders, and your location, custom display names and listed apps are left out. Open an [issue](https://github.com/Arnie14/WinLight/issues), paste the summary and attach the zip. The zip is deleted after 7 days.
@@ -55,6 +59,7 @@ If Microsoft Defender flags a build, please [submit it to Microsoft as a false p
 - [Features and status](docs/features.md): what each feature does and how far it is tested, and the roadmap
 - [Why Winlight?](docs/why-winlight.md): compared with Windows' controls and similar apps, the project's goals, and switching
 - [Command line](docs/command-line.md): `winlight-cli` options, exit codes, and equivalents in other tools
+- [Performance](docs/performance.md): memory, processor and start-up, measured, and what runs in the background
 - [Windows notes](docs/windows-notes.md): how Winlight uses the Windows APIs, its reliability and safety design, and known limits
 - [Testing with the installer](docs/testing-installer.md) and the [full test plan](docs/windows-testing.md)
 - [Development](docs/development.md): running from source, tests, the hardware checks, building and releasing, and the repository layout
@@ -71,7 +76,7 @@ pip install -e ".[dev]"
 python main.py
 ```
 
-Tests run with `pytest` and lint with `ruff check .`; `python tools/hardware_checks.py` checks the backends against the real Windows APIs. Building, releasing and the repository layout are in [docs/development.md](docs/development.md).
+Tests run with `pytest -n auto --dist loadgroup` (about 2 minutes on every core) and lint with `ruff check .`; `python tools/hardware_checks.py` checks the backends against the real Windows APIs. Building, releasing and the repository layout are in [docs/development.md](docs/development.md).
 
 ## License
 
