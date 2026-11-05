@@ -458,6 +458,89 @@ def test_starting_and_quitting_again_and_again_leaves_nothing_behind(tmp_path, m
     assert set(threading.enumerate()) <= before, [t.name for t in threading.enumerate() if t not in before]
 
 
+# --- The whole app, used at random ------------------------------------------------------------------
+
+
+def random_general(rng: random.Random, general: GeneralConfig) -> GeneralConfig:
+    return dataclasses.replace(
+        general, idle_dim=rng.random() < 0.5, idle_minutes=rng.choice([1, 5, 30]), software_dimming=rng.random() < 0.5,
+        link_brightness=rng.random() < 0.5, remember_brightness=rng.random() < 0.7,
+        keep_brightness_on_power_change=rng.random() < 0.5, shortcut_overlay=rng.random() < 0.5)
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_app_keeps_its_promises_through_random_use(start, seed):  # noqa: F811
+    """Each part has its own tests; this drives the real app through its own
+    paths in a random order (the tray, shortcuts, the command line, Settings,
+    Windows' sleep, lock and display events, the panel) and checks after each
+    step what must always hold, and at the end that quitting, or Windows
+    ending the session, gives every display its colors back."""
+    from PySide6.QtCore import QRect
+
+    from nightlight.core.shortcuts import BRIGHTNESS_DOWN, BRIGHTNESS_UP, NIGHT_LIGHT, PANEL, SUSPEND
+    from nightlight.hardware import create_backends
+
+    rng = random.Random(seed)
+    brightness, gamma = create_backends("fake")
+    night_light, _ = start(GeneralConfig(), backends=(brightness, gamma))
+    tray, events = night_light.tray, night_light.system_events
+    sent, replies = [], []
+
+    def tray_item():
+        tray._menu.aboutToShow.emit()
+        item = tray._override_action
+        rng.choice(item.menu().actions()).trigger() if item.menu() is not None else item.trigger()
+
+    def command():
+        request = rng.choice([
+            {"command": "night-light", "action": rng.choice(["toggle", "suspend", "resume", "on", "off", "auto", "status", "?"])},
+            {"command": "set", "value": rng.choice(["0", "35", "100", "+10", "-10", "x"]), "display": "all"},
+            {"command": "list"}, {"command": "get"}, {"command": "refresh"}, {"command": "nonsense"}])
+        sent.append(request)
+        night_light.handle_request(request, replies.append)
+
+    def apply_settings():
+        config = night_light._config
+        night_light._apply_settings(dataclasses.replace(config, night_light=random_night_light(rng),
+                                                        general=random_general(rng, config.general)))
+
+    def a_brightness():
+        if monitors := [m for m in night_light.monitors.monitors if m.supported]:
+            night_light.monitors.set_brightness(rng.choice(monitors).key, rng.randint(0, 100))
+
+    def settings_window():
+        night_light.show_settings()
+        night_light._settings.close()
+
+    steps = [
+        tray_item, command, apply_settings, a_brightness, settings_window,
+        lambda: night_light._run_shortcut(Shortcut("Ctrl+Alt+F9", rng.choice([NIGHT_LIGHT, SUSPEND, BRIGHTNESS_UP, BRIGHTNESS_DOWN, PANEL]),
+                                                   value=10)),
+        lambda: (events.suspending.emit(), events.resumed.emit()),
+        lambda: (events.displayOff.emit(), events.displayOn.emit()),
+        lambda: (events.locked.emit(), events.unlocked.emit()),
+        events.displayChanged.emit,
+        lambda: tray.panelRequested.emit(QRect()),
+        night_light.flyout.hide,
+    ]
+    for step in range(50):
+        rng.choice(steps)()
+        QTest.qWait(rng.choice([0, 10, 60]))
+        where = f"seed {seed}, step {step}"
+        assert MIN_KELVIN <= gamma.kelvin <= MAX_KELVIN, where
+        tray._menu.aboutToShow.emit()
+        items = [a.text() for a in tray._menu.actions() if a.isVisible() and not a.isSeparator()]
+        assert len(items) == len(set(items)) and sum(t.endswith("Night Light") for t in items) == 1, (where, items)
+        assert tray.toolTip().startswith("Winlight\nNight Light: "), where
+        levels = [night_light.monitors.value(m.key) for m in night_light.monitors.monitors]
+        assert all(level is None or 0 <= level <= 100 for level in levels), (where, levels)
+    assert len(replies) == len(sent) and all(isinstance(r.get("ok"), bool) for r in replies)  # each request answered, once
+    if night_light._settings is not None:
+        night_light._settings.close()
+    events.endingSession.emit() if seed % 2 else night_light._shutdown()
+    assert gamma.kelvin == NEUTRAL_KELVIN and not gamma.dimmed and not getattr(gamma, "idle_dims", {}), (gamma.kelvin, gamma.dims)
+
+
 # --- Qt objects: on the main thread, and freed when let go ------------------------------------------
 
 

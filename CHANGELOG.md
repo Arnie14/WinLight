@@ -2,6 +2,14 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.8.0 Beta 2 (unreleased)
+
+### Changed
+
+- **The tray icon's menu is simpler and looks like Windows 11's.** It said "Suspend Night Light" twice: a check item (suspend until resumed) and a submenu (for an hour, until the evening, or until resumed), each doing something else; at noon it offered to suspend a night light that was off. There is now one Night Light item, named for what it does now: Suspend ▸ or Activate ▸, or Resume or Turn Off while one of those is on. **Open Winlight** comes first, in bold as Windows marks the default, and opens the panel, as clicking the icon does. Each item has an icon, drawn like Settings' own, and the menu follows Windows' light or dark taskbar. Suspending until resumed during the day, so that the evening wouldn't turn night light on, is no longer in the menu: turn night light off in Settings for that.
+- **Report a Problem's box looks like Settings' questions**, with Show File, Open GitHub Issues and Close along its foot, rather than an old-style message box.
+- **Settings > General > About ends with a note**: what Winlight is made for, and a request to anyone building on its code to keep the credit and the license, say what they changed, and not present their copy as Winlight.
+
 ## 0.8.0 Beta 1 (2026-11-04)
 
 ### Added
