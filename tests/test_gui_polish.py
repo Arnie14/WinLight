@@ -221,6 +221,112 @@ def test_pausing_details_show_only_while_their_switch_is_on(window):
     assert not window.exempt_apps.isHidden() and not window._never_pause_when.isHidden()
 
 
+def test_secondary_text_follows_a_theme_switched_in_settings():
+    """Switching the theme (Qt's colour scheme override) reaches labels as
+    PaletteChange only: the header's tagline, page subtitles and every
+    description kept the old mode's grey until a restart."""
+    from PySide6.QtCore import QEvent
+
+    from nightlight.ui.widgets import SecondaryLabel
+
+    app = QApplication.instance()
+    light = app.palette()
+    label = SecondaryLabel("Brightness and night light for every display")
+    light_grey = label.palette().color(QPalette.ColorRole.WindowText)
+    dark = QPalette(light)
+    dark.setColor(QPalette.ColorRole.Window, QColor("#202020"))
+    dark.setColor(QPalette.ColorRole.WindowText, QColor("#f0f0f0"))
+    events = []
+    try:
+        app.setPalette(dark)
+        label.setPalette(QPalette(label.palette()))  # as if the application-wide event had been missed
+        stale = label.palette()
+        stale.setColor(QPalette.ColorRole.WindowText, light_grey)
+        label.setPalette(stale)
+        original = label.changeEvent
+        label.changeEvent = lambda event: (events.append(event.type()), original(event))
+        QApplication.sendEvent(label, QEvent(QEvent.Type.PaletteChange))
+        assert label.palette().color(QPalette.ColorRole.WindowText).lightnessF() > 0.5  # light grey on dark now
+        assert len(events) < 5  # recolouring didn't set off more palette changes for ever
+    finally:
+        app.setPalette(light)
+        label.deleteLater()
+
+
+def test_brightness_today_is_a_chart_with_the_level_now():
+    from datetime import UTC, datetime, timedelta
+
+    from PySide6.QtGui import QImage
+
+    from nightlight.ui.day_ribbon import BrightnessDay
+
+    noon = datetime(2026, 6, 15, 12, tzinfo=UTC)
+    chart = BrightnessDay(lambda moment: 80 if 7 <= moment.hour < 21 else 30, lambda: noon)
+    assert chart.level_now() == 80
+    chart.set_marker(noon + timedelta(hours=10))  # 22:00, as the 24-hour preview would
+    assert chart.level_now() == 30
+    assert "the line is the level" in chart.toolTip()
+    for width in (3, 40, 600):  # paints at any width, without raising
+        chart.resize(width, chart.height())
+        image = QImage(chart.size(), QImage.Format.Format_ARGB32)
+        chart.render(image)
+    chart.deleteLater()
+
+
+def prompt():
+    from nightlight.ui.prompt import Prompt
+
+    box = Prompt(None, "Winlight: Restore defaults", "Put the default settings back?", "Nothing is saved until Apply.")
+    main = box.add_button("Restore defaults", "accent", default=True)
+    cancel = box.add_button("Cancel")
+    return box, main, cancel
+
+
+def test_a_prompt_answers_with_the_button_chosen():
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    box, main, cancel = prompt()
+    box.open()
+    QTest.keyClick(box, Qt.Key.Key_Return)  # Enter: the main action
+    assert box.clicked is main and not box.isVisible()
+    box, main, cancel = prompt()
+    box.open()
+    cancel.setFocus(Qt.FocusReason.TabFocusReason)
+    QTest.keyClick(box, Qt.Key.Key_Return)  # Enter on the focused button chooses it
+    assert box.clicked is cancel
+    box, main, cancel = prompt()
+    box.open()
+    QTest.keyClick(box, Qt.Key.Key_Escape)  # Esc: no answer, as Cancel
+    assert box.clicked is None and not box.isVisible()
+
+
+def test_a_prompt_lays_out_as_windows_11_does():
+    box, main, cancel = prompt()
+    layout = box._footer_layout
+    assert [layout.itemAt(i).widget() for i in range(layout.count())] == [main, cancel]  # main first, Cancel last
+    assert main.kind == "accent" and cancel.kind == "standard"
+    box.open()
+    QApplication.processEvents()
+    assert main.width() == cancel.width()  # equally wide, across the footer
+    assert box.accessibleName() == "Put the default settings back?"
+    box.reject()
+
+
+def test_closing_settings_with_changes_and_pressing_esc_keeps_editing(window, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    monkeypatch.setattr(window, "_is_users_close", lambda event: True)
+    window.show()
+    window.night_temperature.setValue(3000)
+    window.close()
+    QTest.keyClick(window._close_box, Qt.Key.Key_Escape)
+    assert window.isVisible() and window.night_temperature.value() == 3000 and window._close_box is None
+    window.close()
+    window._close_discard.click()
+
+
 def test_an_app_list_is_as_tall_as_its_apps():
     apps = AppList(list, installed=list)
     assert not apps.empty.isHidden() and apps.list.isHidden() and apps._remove.isHidden()

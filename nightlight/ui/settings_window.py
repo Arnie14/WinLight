@@ -18,7 +18,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt, QTime, QTimer, QTimeZone, QUrl, Signal
+from PySide6.QtCore import QEvent, QStandardPaths, Qt, QTime, QTimer, QTimeZone, QUrl, Signal
 from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -60,9 +59,10 @@ from nightlight.core.schedule import OverrideKind, compute_state
 from nightlight.hardware.gamma import GammaBusy
 from nightlight.ui import icons
 from nightlight.ui import theme as theme_module
-from nightlight.ui.day_ribbon import DayRibbon, brightness_color
+from nightlight.ui.day_ribbon import BrightnessDay, DayRibbon
 from nightlight.ui.night_light_text import is_night_light_on, night_light_status, schedule_description
 from nightlight.ui.preview_notice import PreviewNotice
+from nightlight.ui.prompt import Prompt
 from nightlight.ui.schedule_editor import ScheduleEditor
 from nightlight.ui.settings_parts import ActionBar, Card, NavButton, PageTitle, SectionLabel, SettingRow, StatusBadge, ToggleSwitch, time_field
 from nightlight.ui.settings_widgets import AppList, DisplayList
@@ -228,8 +228,8 @@ class SettingsWindow(QWidget):
         self._pause_shortcuts = pause_shortcuts
         self._recording = False
         self._warmer_unlocked = warmer_unlocked
-        self._restore_box: QMessageBox | None = None  # asking whether to restore the defaults
-        self._close_box: QMessageBox | None = None  # asking about unsaved changes when closing
+        self._restore_box: Prompt | None = None  # asking whether to restore the defaults
+        self._close_box: Prompt | None = None  # asking about unsaved changes when closing
         self._unlock_outcome = ""  # how the last Unlock or Lock again went
         self._locked_again = False  # locked again since Windows last applied the limit (at sign-in)
         self._preview_notice: PreviewNotice | None = None  # made when a slider is first held
@@ -647,8 +647,7 @@ class SettingsWindow(QWidget):
     def _brightness_page(self) -> QWidget:
         page, layout = _page("Brightness", "Schedule brightness by time of day, and choose how it is kept.")
         # The schedule's day, as Night Light shows its own: from the settings on this page, applied or not.
-        self.brightness_ribbon = DayRibbon(self._scheduled_level_at, self._controller.now, zone=lambda: self._controller.zone,
-                                           color_of=brightness_color, fallback=100, name="Brightness today")
+        self.brightness_ribbon = BrightnessDay(self._scheduled_level_at, self._controller.now, zone=lambda: self._controller.zone)
         self._brightness_day = QWidget()  # shown while the schedule is on
         day_layout = QVBoxLayout(self._brightness_day)
         day_layout.setContentsMargins(0, 0, 0, 14)
@@ -917,6 +916,13 @@ class SettingsWindow(QWidget):
         self.windows_night_light.setVisible(bool(on))
         self._notice_holder.setVisible(bool(on))
 
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange and getattr(self, "_shown_entries", None) is not None:
+            # The theme changed: the display icons were drawn in the old text colour.
+            self._shown_entries = None
+            self._update_displays()
+
     def showEvent(self, event) -> None:
         if not self._placed:
             self._placed = True
@@ -971,14 +977,11 @@ class SettingsWindow(QWidget):
             return
         pages = [PAGES[i] for i in sorted(changed_pages(self.current_config(), self._saved))]
         named = pages[0] if len(pages) == 1 else ", ".join(pages[:-1]) + " and " + pages[-1]
-        box = QMessageBox(QMessageBox.Icon.Question, f"{APP_NAME}: Unsaved changes", "Apply your changes before closing?",
-                          parent=self)
-        box.setInformativeText(f"There are unsaved changes on {named}.")
-        self._close_apply = box.addButton("Apply", QMessageBox.ButtonRole.AcceptRole)
-        self._close_discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(self._close_apply)
-        box.setWindowModality(Qt.WindowModality.WindowModal)
+        box = Prompt(self, f"{APP_NAME}: Unsaved changes", "Apply your changes before closing?",
+                     f"There are unsaved changes on {named}.")
+        self._close_apply = box.add_button("Apply", "accent", default=True)
+        self._close_discard = box.add_button("Discard")
+        box.cancel = box.add_button("Cancel")
         box.finished.connect(self._close_answered)
         self._close_box = box
         box.open()
@@ -987,7 +990,7 @@ class SettingsWindow(QWidget):
         box, self._close_box = self._close_box, None
         if box is None:
             return
-        clicked = box.clickedButton()
+        clicked = box.clicked
         box.deleteLater()
         if clicked is self._close_apply:
             self._apply()
@@ -1359,19 +1362,17 @@ class SettingsWindow(QWidget):
         if not pages:
             return
         named = pages[0] if len(pages) == 1 else ", ".join(pages[:-1]) + " and " + pages[-1]
-        box = QMessageBox(QMessageBox.Icon.Question, f"{APP_NAME}: Restore defaults",
-                          f"Put the default settings back on {named}?", parent=self)
-        box.setInformativeText("Nothing is saved until you click Apply, and Reset undoes it. Display names are kept.")
-        self._restore_confirm = box.addButton("Restore defaults", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setWindowModality(Qt.WindowModality.WindowModal)
+        box = Prompt(self, f"{APP_NAME}: Restore defaults", f"Put the default settings back on {named}?",
+                     "Nothing is saved until you click Apply, and Reset undoes it. Display names are kept.")
+        self._restore_confirm = box.add_button("Restore defaults", "accent", default=True)
+        box.cancel = box.add_button("Cancel")
         box.finished.connect(self._restore_answered)
         self._restore_box = box
         box.open()
 
     def _restore_answered(self, _result: int) -> None:
         box, self._restore_box = self._restore_box, None
-        if box is not None and box.clickedButton() is self._restore_confirm:
+        if box is not None and box.clicked is self._restore_confirm:
             self._load(self._defaults())
         if box is not None:
             box.deleteLater()

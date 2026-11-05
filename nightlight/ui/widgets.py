@@ -112,7 +112,10 @@ class SecondaryLabel(QLabel):
 
     def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)
-        if event.type() in (QEvent.Type.ApplicationPaletteChange, QEvent.Type.StyleChange):
+        # Switching the theme in Settings (Qt 6.8+'s colour scheme override)
+        # reaches widgets as PaletteChange, not ApplicationPaletteChange: the
+        # labels kept the old mode's grey, nearly invisible on the new background.
+        if event.type() in (QEvent.Type.ApplicationPaletteChange, QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
             self._recolor()
 
     def _recolor(self) -> None:
@@ -123,8 +126,9 @@ class SecondaryLabel(QLabel):
         # #f3f3f3), so captions and percentages stay easy to read.
         amount = SECONDARY_FADE_LIGHT if window.lightnessF() >= 0.5 else SECONDARY_FADE_DARK
         faded = blend(app.color(QPalette.ColorRole.WindowText), window, amount)
-        palette.setColor(QPalette.ColorRole.WindowText, faded)
-        self.setPalette(palette)
+        if palette.color(QPalette.ColorRole.WindowText) != faded:  # else setPalette's own PaletteChange would loop
+            palette.setColor(QPalette.ColorRole.WindowText, faded)
+            self.setPalette(palette)
 
 
 class Separator(QWidget):

@@ -6,7 +6,8 @@ as the gamma ramps), with a needle at the time shown.
 In Settings it follows the settings on the page, applied or not, so changing
 the times shows the day changing; the 24-hour preview moves its needle. The
 panel shows a slim one under Night Light. The Brightness page shows a day of
-its schedule the same way, darker where the level is lower.
+its schedule as a small chart instead (BrightnessDay): a level reads as a
+height and a number, where a grey didn't.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, tzinfo
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPalette, QPen
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPalette, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from nightlight.core.clock import wall_time
@@ -126,7 +127,10 @@ class DayRibbon(QWidget):
         font = painter.font()
         font.setPointSizeF(font.pointSizeF() * 0.85)
         painter.setFont(font)
-        label_top = bar.bottom() + 3
+        self._hour_labels(painter, bar, start, end, bar.bottom() + 3)
+
+    def _hour_labels(self, painter: QPainter, bar: QRectF, start: datetime, end: datetime, label_top: float) -> None:
+        span = end - start
         zone = self._zone()
         for hour in HOURS:
             label = f"{hour:02d}:00"
@@ -137,3 +141,115 @@ class DayRibbon(QWidget):
             width = painter.fontMetrics().horizontalAdvance(label)
             left = min(max(hx - width / 2, bar.left()), bar.right() - width)  # the ends stay inside
             painter.drawText(QRectF(left, label_top, width + 2, self.height() - label_top), Qt.AlignmentFlag.AlignLeft, label)
+
+
+CHART = 64  # px, the brightness chart's plot
+_ACCENT = getattr(QPalette.ColorRole, "Accent", QPalette.ColorRole.Highlight)
+
+
+class BrightnessDay(DayRibbon):
+    """A day of the brightness schedule as a small chart: the level from
+    midnight to midnight as a line in the accent colour over a light fill,
+    faint lines at 25, 50 and 75%, and the needle at now with the level then.
+
+    A strip of greys, as night light's colours are drawn, didn't read: 40%
+    and 60% look much alike, and a grey says no number. Night light keeps
+    its ribbon, where the colour is the information."""
+
+    def __init__(self, level_at: Callable[[datetime], int], now: Callable[[], datetime],
+                 zone: Callable[[], tzinfo | None] = lambda: None, name: str = "Brightness today") -> None:
+        super().__init__(level_at, now, zone=zone, color_of=brightness_color, fallback=100, name=name)
+        self.setFixedHeight(CHART + self.fontMetrics().height() + 6)
+        self.setToolTip(f"{name}, from midnight to midnight: the line is the level, the needle now")
+
+    def level_now(self) -> int:
+        """The level at the needle, as the chart labels it."""
+        moment = self._marker or self._now()
+        start, end = day_bounds(moment, self._zone())
+        levels = self.kelvins(start, end)
+        index = round(SAMPLES * max(0.0, min(1.0, (moment - start) / (end - start))))
+        return int(levels[index])
+
+    def paintEvent(self, _event) -> None:
+        if self.width() < 4:
+            return
+        moment = self._marker or self._now()
+        start, end = day_bounds(moment, self._zone())
+        palette = self.palette()
+        window, text = palette.color(QPalette.ColorRole.Window), palette.color(QPalette.ColorRole.WindowText)
+        accent = palette.color(_ACCENT)
+        plot = QRectF(0.5, 0.5, self.width() - 1, CHART)
+        inner = plot.adjusted(1, 5, -1, -4)  # room for the line's width at 0% and 100%
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(blend(window, text, 0.18), 1))
+        painter.setBrush(blend(window, text, 0.03))
+        painter.drawRoundedRect(plot, 6, 6)
+
+        def y_of(level: float) -> float:
+            return inner.bottom() - inner.height() * max(0.0, min(100.0, level)) / 100
+
+        grid = QPen(blend(window, text, 0.1), 1, Qt.PenStyle.DashLine)
+        painter.setPen(grid)
+        for level in (25, 50, 75):
+            painter.drawLine(QPointF(inner.left() + 4, y_of(level)), QPointF(inner.right() - 4, y_of(level)))
+
+        levels = self.kelvins(start, end)
+        points = [QPointF(inner.left() + inner.width() * i / SAMPLES, y_of(level)) for i, level in enumerate(levels)]
+        area = QPainterPath(QPointF(points[0].x(), inner.bottom()))
+        for point in points:
+            area.lineTo(point)
+        area.lineTo(QPointF(points[-1].x(), inner.bottom()))
+        area.closeSubpath()
+        fill = QLinearGradient(QPointF(0, inner.top()), QPointF(0, inner.bottom()))
+        top, bottom = QColor(accent), QColor(accent)
+        top.setAlphaF(0.32)
+        bottom.setAlphaF(0.06)
+        fill.setColorAt(0, top)
+        fill.setColorAt(1, bottom)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(fill)
+        painter.drawPath(area)
+        line = QPainterPath(points[0])
+        for point in points[1:]:
+            line.lineTo(point)
+        pen = QPen(accent, 2)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(line)
+
+        # Now: the needle, a dot on the line, and the level then.
+        x = inner.left() + inner.width() * max(0.0, min(1.0, (moment - start) / (end - start)))
+        level = self.level_now()
+        for color, width in ((window, 4), (text, 2)):
+            needle = QPen(color, width)
+            needle.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(needle)
+            painter.drawLine(QPointF(x, plot.top() + 3), QPointF(x, plot.bottom() - 3))
+        dot = QPointF(x, y_of(level))
+        painter.setPen(QPen(window, 2))
+        painter.setBrush(accent)
+        painter.drawEllipse(dot, 4.5, 4.5)
+        label = f"{level}%"
+        font = painter.font()
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        width, height = metrics.horizontalAdvance(label) + 10, metrics.height() + 2
+        # Beside the dot, on the side with room, above it unless that leaves the chart.
+        left = x + 8 if x + 8 + width <= plot.right() - 2 else x - 8 - width
+        top_y = dot.y() - height - 2 if dot.y() - height - 2 >= plot.top() + 2 else dot.y() + 4
+        tag = QRectF(left, min(top_y, plot.bottom() - height - 2), width, height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(window)
+        painter.drawRoundedRect(tag, 4, 4)
+        painter.setPen(text)
+        painter.drawText(tag, Qt.AlignmentFlag.AlignCenter, label)
+
+        painter.setPen(blend(window, text, 0.55))
+        font = painter.font()
+        font.setWeight(QFont.Weight.Normal)
+        font.setPointSizeF(font.pointSizeF() * 0.85)
+        painter.setFont(font)
+        self._hour_labels(painter, plot, start, end, plot.bottom() + 3)

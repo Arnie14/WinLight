@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from PySide6.QtCore import QByteArray, Qt, QTime, QTimeZone
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLabel
 
 from nightlight.color.controller import NightLightController
 from nightlight.config import Anchor, AppConfig, BrightnessScheduleConfig, GeneralConfig, Mode, NightLightConfig, SchedulePoint
@@ -127,8 +127,8 @@ def test_restore_defaults_asks_first_naming_the_pages_it_changes(window):
     restore = window.buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults)
     restore.click()
     box = window._restore_box
-    assert "Night Light" in box.text() and box.isVisible()
-    box.button(QMessageBox.StandardButton.Cancel).click()  # changed their mind
+    assert "Night Light" in box.title.text() and box.isVisible()
+    box.cancel.click()  # changed their mind
     assert window.current_config() == AppConfig(KYIV, GeneralConfig()) and window._restore_box is None
     restore.click()
     window._restore_confirm.click()
@@ -852,8 +852,8 @@ def test_closing_with_unsaved_changes_asks_to_apply_or_discard(window, monkeypat
     window.night_temperature.setValue(3000)
     window.close()
     box = window._close_box
-    assert window.isVisible() and box is not None and "Night Light" in box.informativeText()
-    box.button(QMessageBox.StandardButton.Cancel).click()  # keep editing
+    assert window.isVisible() and box is not None and "Night Light" in box.message.text()
+    box.cancel.click()  # keep editing
     assert window.isVisible() and window.night_temperature.value() == 3000
     window.close()
     window._close_discard.click()

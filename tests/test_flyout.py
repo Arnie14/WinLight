@@ -154,8 +154,15 @@ def test_popup_that_grows_while_open_stays_on_screen():
     controller = NightLightController(FakeGamma(), NightLightConfig(), lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
     monitors = FakeMonitors([])
     popup = Flyout(monitors, controller, as_window=False)
+    # A window an earlier test closed may still have its activation queued:
+    # it would close the popup as soon as it opened (a popup closes when
+    # another window becomes active), and the popup would grow hidden. Found
+    # running in parallel, after Settings' close question. In the app the
+    # queue has long run by the time the tray icon is clicked.
+    QTest.qWait(50)
     popup.show_near(None)
     QTest.qWait(20)
+    assert popup.isVisible()
     small = popup.geometry()
     grown = FakeMonitors([MonitorInfo(i, f"Monitor {i}", True, key=f"M{i}") for i in range(4)])
     monitors.monitors, monitors.states = grown.monitors, grown.states

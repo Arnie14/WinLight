@@ -168,7 +168,7 @@ Dimming when idle (Settings > Brightness > When I'm away, e.g. 1 minute to 20%):
 Settings > Brightness > **Change brightness by time of day**:
 
 - [ ] Each preset fills in its times and transition; editing one switches the preset to Custom. The line under the schedule shows the current level and the next change.
-- [ ] The strip above the schedule is darker where the schedule dims, with a line at now; editing a level or time changes it at once. Turning the schedule off hides it.
+- [ ] The chart above the schedule shows the level through the day, with the level now beside the line at now; editing a level or time changes it at once. Turning the schedule off hides it.
 - [ ] A point a couple of minutes ahead: every display changes then (the log says "Brightness schedule: N% …"), gradually over the transition.
 - [ ] Move a slider after a point: your level stays until the next point, also across sleep and restarting Winlight.
 - [ ] Sleep through a point or two: only the latest applies, once.
