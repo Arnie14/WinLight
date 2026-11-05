@@ -183,7 +183,12 @@ def test_displays_say_how_their_brightness_is_controlled():
         row = MonitorBrightness(info, DisplayState(info, Status.OK, observed=50))  # kept alive while its labels are read
         return [label.text() for label in row.findChildren(SecondaryLabel) if label.text() not in ("…", "50%", "")]
 
-    assert captions(MonitorInfo(0, "DELL", True)) == []
+    # Every display says how: the screenshots showed it for HDR and dimmed
+    # displays only, and a DDC/CI monitor or laptop panel said nothing.
+    assert captions(MonitorInfo(0, "DELL", True, channel="ddc")) == ["DDC/CI"]
+    assert captions(MonitorInfo(0, "DELL", True, channel="ddc-high-level")) == ["DDC/CI"]
+    assert captions(MonitorInfo(0, "Built-in display", True, internal=True, channel="wmi")) == ["Laptop brightness"]
+    assert "DDC/CI" not in captions(MonitorInfo(0, "Old", False, reason="DDC/CI didn't answer", channel="ddc"))  # says why instead
     assert captions(MonitorInfo(0, "HDR monitor", True, control="sdr")) == ["HDR · SDR content brightness"]
     assert captions(MonitorInfo(0, "TV", True, control="software", minimum=20)) == ["Software dimming"]
     assert MonitorBrightness(MonitorInfo(0, "TV", True, control="software", minimum=20)).slider.minimum() == 20

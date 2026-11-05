@@ -39,7 +39,18 @@ BRIGHTNESS_THROTTLE_MS = 100
 SECONDARY_FADE_LIGHT = 0.28
 SECONDARY_FADE_DARK = 0.38
 NOT_SUPPORTED = "No brightness control"
-# Said under the name when brightness isn't the display's own backlight.
+# Said under every controllable display's name: how its brightness is changed.
+# The display's own backlight, by the way in (MonitorInfo.channel)...
+CHANNEL_CAPTIONS = {
+    "ddc": ("DDC/CI", "Changes the monitor's own brightness setting (its backlight) over DDC/CI, as its buttons do."),
+    "ddc-high-level": ("DDC/CI", ("Changes the monitor's own brightness setting (its backlight) over DDC/CI, through Windows' "
+                                  "monitor brightness call: this monitor didn't answer the direct one.")),
+    "linux-ddc": ("DDC/CI", "Changes the monitor's own brightness setting (its backlight) over DDC/CI."),
+    "wmi": ("Laptop brightness", "The built-in display's backlight, as the laptop's brightness keys and Windows' slider set it."),
+    "kde": ("KDE Plasma", "Through KDE Plasma's own brightness control."),
+    "fake": ("Simulated", "A display simulated for development."),
+}
+# ...or, when it isn't the backlight, by the kind of control (MonitorInfo.control).
 CONTROL_CAPTIONS = {
     "sdr": ("HDR · SDR content brightness", "HDR is on, so this sets Windows' brightness for SDR content, like Settings > Display > HDR."),
     "software": (
@@ -224,7 +235,8 @@ class MonitorBrightness(QWidget):
         set_font(title, weight=QFont.Weight.DemiBold)
         top.addWidget(title, 1)
         layout.addLayout(top)
-        if caption := CONTROL_CAPTIONS.get(info.control):
+        caption = CONTROL_CAPTIONS.get(info.control) or (CHANNEL_CAPTIONS.get(info.channel) if info.supported else None)
+        if caption:
             text, tooltip = caption
             label = SecondaryLabel(text, scale=0.88)
             label.setToolTip(tooltip)
