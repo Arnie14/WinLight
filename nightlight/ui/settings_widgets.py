@@ -137,6 +137,10 @@ class AppList(QWidget):
             self._fit()
             self.changed.emit()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._fit()  # rows measured again now the style's fonts apply: built hidden, they may have been smaller
+
     def _fit(self) -> None:
         """As tall as its apps (up to MAX_ROWS), or the "none yet" line."""
         count = self.list.count()
