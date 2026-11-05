@@ -7,7 +7,7 @@ What Winlight does, and how far each part has been tested. Winlight is in beta: 
 | Hardware | What was tested |
 |---|---|
 | The test laptop: Windows 11 25H2, one built-in panel, no external monitor | Everything marked Ready below that doesn't need an external display |
-| A tester's laptop: Windows 11 25H2, a built-in panel and a Dell P2419HC over HDMI, two weeks of Winlight 0.7.5 Beta 1 | DDC/CI brightness, detection, sleep and waking, the laptop screen and the monitor duplicated, remembered brightness, Report a Problem. Night light, the schedules and shortcuts weren't used; they are being tried next |
+| A tester's laptop: Windows 11 25H2, a built-in panel and a Dell P2419HC over HDMI, two weeks of Winlight 0.7.5 Beta 1 | DDC/CI brightness, detection, sleep and waking, the laptop screen and the monitor duplicated, remembered brightness, Report a Problem. A day more (the Dell alone): the brightness schedule, turned on, applied at once, and keeping calibrations was turned on; the Dell stopped near 74% when asked for 85% or 100% (its own mode or another tool, being asked). Night light's evening and shortcuts weren't reached yet |
 
 | Status | Meaning |
 |---|---|
