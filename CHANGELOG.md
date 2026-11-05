@@ -2,7 +2,7 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
-## 0.8.0 Beta 2 (unreleased)
+## 0.8.5 Beta 1 (2026-11-05)
 
 ### Added
 
