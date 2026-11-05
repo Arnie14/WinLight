@@ -13,7 +13,7 @@ Tell us your setup in the issue: Windows version, laptop or desktop, and each di
 - [ ] The first page explains the beta, what clashes with Winlight and what to turn off; read it.
 - [ ] No administrator prompt appears. "Start Winlight when I sign in" is ticked; optionally tick "Add winlight-cli to PATH".
 - [ ] At the end, "Launch Winlight" starts it: Winlight's icon appears in the tray (a small display with the sun in it) (check the ^ overflow area), and no console window opens.
-- [ ] On a first install, the welcome screen opens: today's night light, when it comes on, and anything on your PC that would clash with Winlight (Windows Night Light on, f.lux, LightBulb, Twinkle Tray or Monitorian running, a monitor without DDC/CI), each with what to do. Note anything it gets wrong. It doesn't open again at the next start; Settings > General > Welcome screen shows it again.
+- [ ] On a first install, the welcome screen opens: today's night light, when it comes on, each display and how Winlight controls it, and anything on your PC that would clash with Winlight (Windows Night Light on, or another night light or brightness tool running), each with what to do. If Winlight's icon is hidden under ^ next to the clock, it says how to keep it in sight. From the portable zip, it offers to start Winlight when you sign in. Note anything it gets wrong. It doesn't open again at the next start; Settings > General > Welcome screen shows it again.
 
 ## 2. The panel
 
@@ -72,7 +72,8 @@ In a new terminal (or use the full path `%LOCALAPPDATA%\Programs\Winlight\winlig
 - [ ] Settings → General → **Start Winlight when I sign in** is on. Sign out and in: Winlight starts in the tray only. Turn it off, Apply: Task Manager → Startup apps shows Winlight as Disabled. Microsoft Defender doesn't flag or quarantine Winlight (Windows Security → Protection history).
 - [ ] Settings → General → **Theme**: Light and Dark change Winlight's windows at once; Match Windows goes back to Windows' choice. **Accent color**: each preset recolors switches, sliders and the Apply button in both themes, and the text on Apply stays readable.
 - [ ] In light mode, the panel's percentages and captions are easy to read.
-- [ ] With night light on, run the installer again: Winlight closes itself, colors go back to normal, and your settings are kept after it starts again. Upgrading from 0.2.0 or earlier: the settings folder `%LOCALAPPDATA%\night-light` is renamed to `%LOCALAPPDATA%\WinLight`, with everything in it.
+- [ ] With night light on, run a newer installer: its first page says which version is installed and that it updates it, and the last button says **Update**. Winlight closes itself, colors go back to normal, and your settings are kept after it starts again. Settings → Apps → Installed apps lists one Winlight, with the new version. Upgrading from 0.2.0 or earlier: the settings folder `%LOCALAPPDATA%\night-light` is renamed to `%LOCALAPPDATA%\WinLight`, with everything in it.
+- [ ] With the portable zip's Winlight running, run the installer and leave "Launch Winlight" ticked: the portable copy quits and the installed one starts (its tray icon, not the portable one's panel).
 - [ ] Settings → General → About → **View notices** opens the third-party notices.
 - [ ] Uninstall (Settings → Apps → Winlight): Winlight closes first and colors return to normal. It asks whether to delete your settings too: Yes (the default) deletes `%LOCALAPPDATA%\WinLight`, No keeps it for reinstalling. If you unlocked warmer colors, it also asks whether to put Windows' color limit back (No by default, since f.lux and LightBulb use the same setting). It's gone from the Start menu, from Task Manager → Startup apps, and from PATH if you added it.
 

@@ -94,6 +94,38 @@ def test_the_uninstaller_offers_to_put_windows_color_limit_back_without_pushing_
     assert "if LockColorLimit then" in post
 
 
+def test_an_update_replaces_the_runtime_folder_and_nothing_of_the_users():
+    """Installing over an older version left the files it no longer ships
+    (52 of them, 17 MB, on the test laptop): the runtime folder is cleared
+    first. Only that folder: never the app folder as a whole (Inno's own
+    uninstaller files are there) nor the settings folder."""
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    section = script.split("[InstallDelete]")[1].split("\n[")[0]
+    entries = [line for line in section.splitlines() if line.strip() and not line.lstrip().startswith(";")]
+    assert entries == ['Type: filesandordirs; Name: "{app}\\_internal"']
+
+
+def test_setup_says_when_it_updates_and_reads_the_install_it_updates():
+    """Run over an installed Winlight, Setup's pages said what a first install
+    says, which read as making a second copy. It reads the installed version
+    where Setup recorded it, under the AppId that never changes."""
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    assert f"Uninstall\\{APP_ID[1:]}_is1';" in script  # AppId= writes "{{" for a literal "{"
+    assert "RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', InstalledVersion)" in script
+    pages = script.split("procedure CurPageChanged(CurPageID: Integer);")[1].split("\nend;\n")[0]
+    assert "if InstalledVersion = '' then\n    exit;" in pages  # a first install's pages are left as they are
+    assert "WizardForm.NextButton.Caption := 'Update';" in pages
+
+
+def test_setup_quits_a_copy_running_from_elsewhere_before_starting_the_new_one():
+    """A portable copy kept running, and the new one, finding it, only opened
+    its panel: --quit reaches whichever copy runs, before the launch."""
+    script = (ROOT / "packaging" / "winlight.iss").read_text(encoding="utf-8")
+    launch = next(line for line in script.splitlines() if line.startswith('Filename: "{app}\\Winlight.exe"'))
+    assert "postinstall" in launch and "BeforeInstall: QuitAnyOtherCopy" in launch
+    assert "procedure QuitAnyOtherCopy();\nbegin\n  QuitRunningCopy(ExpandConstant('{app}\\Winlight.exe'));" in script
+
+
 def test_checksums_are_written_as_sha256sum_reads_them(tmp_path):
     import hashlib
 

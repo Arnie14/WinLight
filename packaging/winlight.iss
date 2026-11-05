@@ -50,6 +50,13 @@ Name: "startup"; Description: "Start Winlight when I sign in (recommended)"; Gro
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "addtopath"; Description: "Add winlight-cli to PATH, to control Winlight from scripts and the command line"; GroupDescription: "Command line:"; Flags: unchecked
 
+[InstallDelete]
+; An update replaces the app's runtime folder rather than adding to it: files
+; an older version shipped and this one doesn't (a former Python's DLLs, say)
+; would stay, and could be loaded in place of Windows' own. Nothing of the
+; user's is in it: settings live in %LOCALAPPDATA%\WinLight.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 ; The app folder, with LICENSE.txt and THIRD_PARTY_NOTICES.txt (packaging/build.py puts them there).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -68,7 +75,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NotOnPath(ExpandConstant('{app}'))
 
 [Run]
-Filename: "{app}\Winlight.exe"; Description: "{cm:LaunchProgram,Winlight}"; Flags: nowait postinstall skipifsilent
+; Started only if ticked on the last page, and after any other copy quits.
+Filename: "{app}\Winlight.exe"; Description: "{cm:LaunchProgram,Winlight}"; Flags: nowait postinstall skipifsilent; BeforeInstall: QuitAnyOtherCopy
 
 [Code]
 const
@@ -123,6 +131,84 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   QuitRunningCopy(ExpandConstant('{app}\Winlight.exe'));
   Result := '';
+end;
+
+{ Before the new copy starts: a copy running from elsewhere (the portable
+  zip) would otherwise keep running, and the new one, finding it, would only
+  open its panel and exit. --quit reaches whichever copy is running, as
+  copies are one per user, wherever they are. }
+procedure QuitAnyOtherCopy();
+begin
+  QuitRunningCopy(ExpandConstant('{app}\Winlight.exe'));
+end;
+
+{ --- Saying it's an update ---------------------------------------------------
+  Run again over an installed Winlight, Setup updates it in place (AppId):
+  the same folder, one entry in Installed apps, settings kept. Its pages
+  looked like a first install's, which read as making a second copy. }
+
+const
+  { Where Setup recorded the install: AppId and "_is1", for this user only. }
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{F658C16C-1589-4566-8E3C-295499D77F23}_is1';
+
+var
+  InstalledVersion: String;  { '' on a first install }
+
+function InitializeSetup(): Boolean;
+begin
+  if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', InstalledVersion) then
+    InstalledVersion := '';
+  Result := True;
+end;
+
+{ "0.8.0-beta.2" -> "0.8.0 Beta 2", as the app and its releases write it. }
+function ShownVersion(Version: String): String;
+var
+  P: Integer;
+  Pre: String;
+begin
+  P := Pos('-', Version);
+  if P = 0 then
+  begin
+    Result := Version;
+    exit;
+  end;
+  Pre := Copy(Version, P + 1, Length(Version));
+  StringChangeEx(Pre, '.', ' ', True);
+  Result := Copy(Version, 1, P - 1) + ' ' + Uppercase(Copy(Pre, 1, 1)) + Copy(Pre, 2, Length(Pre));
+end;
+
+function UpdateText(): String;
+begin
+  if InstalledVersion = '{#AppVersion}' then
+    Result := 'Winlight ' + ShownVersion(InstalledVersion) + ' is installed already. Setup installs it again and keeps your settings.'
+  else
+    Result := 'Winlight ' + ShownVersion(InstalledVersion) + ' is installed. Setup updates it to ' +
+      ShownVersion('{#AppVersion}') + ' and keeps your settings.';
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if InstalledVersion = '' then
+    exit;
+  case CurPageID of
+    wpInfoBefore:
+      WizardForm.PageDescriptionLabel.Caption := UpdateText();
+    wpReady:
+      begin
+        WizardForm.PageNameLabel.Caption := 'Ready to update';
+        WizardForm.PageDescriptionLabel.Caption := UpdateText();
+        WizardForm.ReadyLabel.Caption := 'Click Update to continue. Winlight closes first and puts the screen''s colors back.';
+        WizardForm.NextButton.Caption := 'Update';
+      end;
+    wpFinished:
+      if InstalledVersion = '{#AppVersion}' then
+        WizardForm.FinishedLabel.Caption := 'Winlight ' + ShownVersion('{#AppVersion}') +
+          ' is installed again. Your settings are as you left them.'
+      else
+        WizardForm.FinishedLabel.Caption := 'Winlight is updated to ' + ShownVersion('{#AppVersion}') +
+          '. Your settings are as you left them.';
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
