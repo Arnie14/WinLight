@@ -139,6 +139,21 @@ def test_an_update_doesnt_bring_back_a_start_up_entry_removed_since():
     assert script.index("InstalledVersion: String;") < script.index("function KeepStartupEntry")  # declared before use
 
 
+def test_a_release_is_built_once():
+    """Commit, tag, and `git push --atomic origin main <tag>`: the push to main
+    sees its commit tagged and leaves the build to the tag's run, which
+    publishes. Only a push to a branch skips; a tag, or a run by hand, builds.
+    If GitHub's tags can't be read, the run builds (never a missed release)."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "  build:\n    needs: plan\n    if: needs.plan.outputs.build == 'true'\n" in workflow
+    check = workflow.split("      - id: check\n")[1].split("\n  build:\n")[0]
+    assert "build=true\n" in check  # the default
+    assert '[ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_TYPE" = "branch" ]' in check
+    assert 'git ls-remote --tags "$REPO_URL" "v*" | grep -qE "^${GITHUB_SHA}[[:space:]]+refs/tags/v"' in check
+    publish = workflow.split("- name: Publish the release\n")[1]
+    assert publish.startswith("        if: github.ref_type == 'tag'\n")
+
+
 def test_checksums_are_written_as_sha256sum_reads_them(tmp_path):
     import hashlib
 

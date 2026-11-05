@@ -37,7 +37,7 @@ Useful options (`python main.py --help` lists them all):
 - `--debug`: verbose logging. The log is also written to `%LOCALAPPDATA%\WinLight\Logs\WinLight.log`.
 - `--probe`: prints what each Windows API reports about every display and saves it as `probe.txt` in the log folder. It changes nothing, except that each display is briefly tinted to find the warmest night light Windows allows. Use it when a monitor misbehaves.
 - `--report`: prints the compatibility report (also in Settings > Displays) and saves it as `compatibility.txt`. It sends nothing to the displays.
-- `--quit`: asks the running copy to quit cleanly, restoring normal colors. The installer uses it before upgrading or uninstalling.
+- `--quit`: asks the running copy to quit cleanly, restoring normal colors. The installer uses it before upgrading or uninstalling, and before starting the copy it installed, so one running from the portable zip quits too.
 - `--diagnostics`: saves the same zip as Report a Problem and prints its path.
 - `--allow-multiple`: lets a second copy start (normally a second launch opens the running copy's panel).
 - `--config PATH`: a settings file to use instead of the default.
@@ -106,7 +106,7 @@ The README screenshots come from `python tools/screenshots.py` (demo displays, l
 
 - **Versions** are `MAJOR.MINOR.PATCH`, optionally followed by `-alpha.N`, `-beta.N`, `-rc.N` or `-dev`, set in `nightlight/__init__.py`. Windows' file version takes four numbers; the fourth orders pre-releases before their release: `alpha.N` is 1000 + N, `beta.N` 2000 + N, `rc.N` 3000 + N, the release 9000 and a dev build 0. So `0.3.0-beta.1` is file version `0.3.0.2001`, and the product version keeps the readable form.
 - **The installer's AppId** (`packaging/winlight.iss`) never changes: upgrades and the uninstaller find the installed copy by it, and a test pins it.
-- **Releasing:** push a tag such as `v0.3.0-beta.1`. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) lints, tests, builds on Windows and publishes a release titled "Winlight 0.3.0 Beta 1". Tags with `-alpha`, `-rc` or `-dev` become pre-releases. A push to `main`, or running the workflow by hand, builds the files as a downloadable artifact without a release.
+- **Releasing:** set the version and date its changelog section, commit, tag the commit (`git tag -a v0.3.0-beta.1 -m "Winlight 0.3.0 Beta 1"`), and push both at once: `git push --atomic origin main v0.3.0-beta.1`. GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) lints, tests, builds on Windows and publishes a release titled "Winlight 0.3.0 Beta 1", once: the push to `main` sees its commit tagged and leaves the build to the tag's run. Nothing is published unless every step passes; if one fails, delete the tag (`git push --delete origin v0.3.0-beta.1`, `git tag -d v0.3.0-beta.1`), fix it and tag again. Tags with `-alpha`, `-rc` or `-dev` become pre-releases. A push to `main` without a tag, or running the workflow by hand, builds the files as a downloadable artifact without a release. Releasing being one push, small steps (`0.8.6`, `0.8.7`) cost no more than big ones.
 - **Every other push and every pull request** is linted and tested on Windows by [`.github/workflows/tests.yml`](../.github/workflows/tests.yml), without building; failures show as annotations on the pull request.
 - [CHANGELOG.md](../CHANGELOG.md) records each version's changes.
 

@@ -8,6 +8,9 @@
 #   and -dev tags become pre-releases, for builds not meant for everyone.
 # - A push to main, or running it by hand from the Actions tab, tests and
 #   builds the files as a downloadable artifact, without a release.
+# - A release is one run: commit the version, tag it, and push both at once
+#   (git push --atomic origin main v0.8.5-beta.1). The push to main sees its
+#   commit already tagged and leaves the build to the tag's run.
 name: Build Windows app
 
 on:
@@ -20,7 +23,31 @@ permissions:
   contents: write  # to create the release
 
 jobs:
+  plan:
+    # Whether this run builds: not a push to main whose commit carries a
+    # version tag, which the tag's own run builds and publishes. Read from
+    # GitHub's list of tags at run time; if it can't be read, the run builds
+    # (a duplicate build at worst, never a missed one).
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        shell: bash
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_TYPE" = "branch" ] \
+             && git ls-remote --tags "$REPO_URL" "v*" | grep -qE "^${GITHUB_SHA}[[:space:]]+refs/tags/v"; then
+            build=false
+            echo "### Not built here: this commit is tagged for release, and the tag's run builds and publishes it" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,4 +166,4 @@ jobs:
 
             Winlight **replaces** Windows Night Light: turn Windows' one off, or colors are tinted twice. External monitors need **DDC/CI** turned on in their on-screen menu.
 
-            Found a problem? Tray icon → **Report a Problem…**, then [open an issue](https://github.com/Arnie14/WinLight/issues) with the summary and zip. Testers: [checklist](https://github.com/Arnie14/WinLight/blob/main/docs/testing-installer.md).
+            Found a problem? Tray icon → **Report a Problem…**, then [open an issue](https://github.com/Arnie14/WinLight/issues/new?template=bug_report.yml) with the summary and zip (its **Open GitHub Issues** opens the form). Testers: [checklist](https://github.com/Arnie14/WinLight/blob/main/docs/testing-installer.md).
