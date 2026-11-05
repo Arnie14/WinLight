@@ -539,6 +539,19 @@ def test_report_a_problem_from_the_about_card():
     controller.shutdown()
 
 
+def test_the_about_card_ends_with_a_note_that_asks_what_the_license_asks():
+    """A request, not a restriction: Winlight is GPL-3.0, which lets anyone
+    copy and change it; the note mustn't say otherwise ("don't copy")."""
+    controller = NightLightController(FakeGamma(), KYIV, lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
+    window = SettingsWindow(controller, AppConfig(KYIV))
+    note = window.note.description.text()
+    assert window.note.title.text() == "Thank you for using Winlight"
+    assert "safety and privacy" in note and "keep the credit and the license" in note
+    assert "don't copy" not in note.lower() and "reverse" not in note.lower()
+    assert window.note.parentWidget().isAncestorOf(window.github)  # in the About card, after its rows
+    controller.shutdown()
+
+
 def test_display_names_saved_under_an_older_key_show_on_their_display():
     from PySide6.QtCore import QObject, Signal
 

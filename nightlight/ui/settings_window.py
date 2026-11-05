@@ -860,6 +860,14 @@ class SettingsWindow(QWidget):
         logs = QPushButton("Open folder")
         logs.clicked.connect(_open_log_folder)
         about.add(SettingRow("Log files", "The log and diagnostic files Winlight keeps", logs))
+        # A request, not a condition: the GPL lets anyone copy and change the
+        # code, and asks only what is said here (credit, the license, marked changes).
+        self.note = about.add(SettingRow(f"Thank you for using {APP_NAME}", (
+            f"{APP_NAME} is made with care for your safety and privacy: it looks after your displays, keeps what it "
+            "knows on this PC, and puts your screen back the way it was when it quits. It is open source so that anyone "
+            "can check how, and because problems like these are best solved in the open. If you build on its code, "
+            "please honor that: keep the credit and the license, say what you changed, and don't present your copy as "
+            f"{APP_NAME}. Ideas and problem reports are always welcome on GitHub.")))
         layout.addWidget(about)
         return page
 
