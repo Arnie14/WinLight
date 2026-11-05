@@ -50,6 +50,12 @@ DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2
 DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO = 9
 DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2 = 15  # Windows 11 24H2+
 DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR = 2
+# Bits of the advanced color queries' `value`. The older query: bit 0
+# advancedColorSupported, bit 1 advancedColorEnabled. The 24H2 one: bit 4
+# highDynamicRangeSupported (bit 0 there also covers wide color on SDR displays).
+ADVANCED_COLOR_SUPPORTED = 0x1
+ADVANCED_COLOR_ENABLED = 0x2
+HDR_SUPPORTED_2 = 0x10
 # Windows' "SDR content brightness" for displays in HDR mode. Getting it is
 # documented; setting it is not, and uses the type Monitorian and Twinkle
 # Tray both use. Values are thousandths of 80 nits (1000 = 80 nits).
@@ -206,6 +212,7 @@ class DisplayTarget:
     adapter: tuple[int, int] = (0, 0)  # the adapter's LUID (low, high), for per-target queries
     target_id: int = 0
     edid: edid_parser.Edid | None = None  # from the registry; None if unreadable
+    hdr_capable: bool = False  # it can show HDR, on or not (Windows' advanced color query)
 
     @property
     def key(self) -> str:
@@ -528,16 +535,18 @@ def display_targets() -> list[DisplayTarget]:
             _warn_once("names", "DisplayConfigGetDeviceInfo failed (%s); display names unavailable", describe_error(result))
             return []
         device_path = target.monitorDevicePath
+        hdr, hdr_capable = _hdr_state(path.targetInfo.adapterId, path.targetInfo.id)
         targets.append(
             DisplayTarget(
                 gdi_name=source.viewGdiDeviceName,
                 friendly_name=target.monitorFriendlyDeviceName.strip(),
                 device_path=device_path,
                 output_technology=path.targetInfo.outputTechnology,
-                hdr=_hdr_enabled(path.targetInfo.adapterId, path.targetInfo.id),
+                hdr=hdr,
                 adapter=(path.targetInfo.adapterId.LowPart, path.targetInfo.adapterId.HighPart),
                 target_id=path.targetInfo.id,
                 edid=read_edid(instance_id_from_device_path(device_path)),
+                hdr_capable=hdr_capable,
             )
         )
     return targets
@@ -600,7 +609,8 @@ def _device_info(header: DISPLAYCONFIG_DEVICE_INFO_HEADER) -> int:
 _advanced_color_2: bool | None = None  # whether this Windows has the 24H2 query; None until tried
 
 
-def _hdr_enabled(adapter: LUID, target_id: int) -> bool:
+def _hdr_state(adapter: LUID, target_id: int) -> tuple[bool, bool]:
+    """(HDR on now, the display can do HDR)."""
     # Windows 11 24H2 can report "advanced color" for SDR displays (auto color
     # management), so prefer the newer query, which states HDR explicitly.
     # Older Windows rejects it; remember that rather than asking every time.
@@ -611,15 +621,17 @@ def _hdr_enabled(adapter: LUID, target_id: int) -> bool:
         result = _device_info(info2.header)
         if result == ERROR_SUCCESS:
             _advanced_color_2 = True
-            return info2.activeColorMode == DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR
+            on = info2.activeColorMode == DISPLAYCONFIG_ADVANCED_COLOR_MODE_HDR
+            return on, on or bool(info2.value & HDR_SUPPORTED_2)
         if result in (ERROR_NOT_SUPPORTED, ERROR_INVALID_PARAMETER) and _advanced_color_2 is None:
             _advanced_color_2 = False
             log.info("This Windows has no ADVANCED_COLOR_INFO_2 query (it arrived in 24H2); using the older HDR query")
     info = DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO()
     _fill_header(info.header, DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO, info, adapter, target_id)
     if _device_info(info.header) == ERROR_SUCCESS:
-        return bool(info.value & 0x2)
-    return False
+        # Before 24H2, "advanced color" was HDR: supported, and enabled.
+        return bool(info.value & ADVANCED_COLOR_ENABLED), bool(info.value & ADVANCED_COLOR_SUPPORTED)
+    return False, False
 
 
 def get_sdr_white_level(target: DisplayTarget) -> float | None:

@@ -37,7 +37,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QStyle,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -65,7 +64,7 @@ from nightlight.ui.day_ribbon import DayRibbon, brightness_color
 from nightlight.ui.night_light_text import is_night_light_on, night_light_status, schedule_description
 from nightlight.ui.preview_notice import PreviewNotice
 from nightlight.ui.schedule_editor import ScheduleEditor
-from nightlight.ui.settings_parts import ActionBar, Card, NavButton, PageTitle, SectionLabel, SettingRow, StatusBadge, ToggleSwitch
+from nightlight.ui.settings_parts import ActionBar, Card, NavButton, PageTitle, SectionLabel, SettingRow, StatusBadge, ToggleSwitch, time_field
 from nightlight.ui.settings_widgets import AppList, DisplayList
 from nightlight.ui.shortcut_editor import ShortcutEditor
 from nightlight.ui.widgets import SecondaryLabel, Separator, TemperatureSlider, WindowsNightLightNotice, set_heading_font
@@ -460,8 +459,8 @@ class SettingsWindow(QWidget):
         location_layout.addWidget(self.use_system_zone)
         self.latitude = QDoubleSpinBox(minimum=-90, maximum=90, decimals=4, suffix="°")
         self.longitude = QDoubleSpinBox(minimum=-180, maximum=180, decimals=4, suffix="°")
-        self.night_start = QTimeEdit(displayFormat="HH:mm")
-        self.day_start = QTimeEdit(displayFormat="HH:mm")
+        self.night_start = time_field()
+        self.day_start = time_field()
         self.transition = QSpinBox(minimum=1, maximum=MAX_TRANSITION_MINUTES, suffix=" min")
         # Sunrise and sunset: twilight's own length, none, or a chosen length.
         self.solar_transition = QComboBox()
@@ -470,9 +469,9 @@ class SettingsWindow(QWidget):
         for minutes in range(5, MAX_SOLAR_TRANSITION_MINUTES + 1, 5):
             self.solar_transition.addItem(f"{minutes} min", minutes)
         self.solar_transition.setMaxVisibleItems(12)
-        self.bedtime = QTimeEdit(displayFormat="HH:mm")
+        self.bedtime = time_field()
         self.bedtime.setTime(QTime(23, 0))
-        self.wake_time = QTimeEdit(displayFormat="HH:mm")
+        self.wake_time = time_field()
         self.wake_time.setTime(QTime(7, 0))
         self.use_sleep_schedule = QPushButton("Use sleep schedule")
         self.use_sleep_schedule.setToolTip(f"Custom times from your bedtime and wake-up time, {SLEEP_KELVIN} K or warmer, "
@@ -501,7 +500,7 @@ class SettingsWindow(QWidget):
         for key, label in NEVER_PAUSE_CHOICES.items():
             self.never_pause_from.addItem(label, key)
         self.never_pause_from.setFixedWidth(WIDE_FIELD)
-        self.never_pause_time = QTimeEdit(displayFormat="HH:mm")
+        self.never_pause_time = time_field()
         self.never_pause_time.setFixedWidth(NARROW_FIELD)
         self.never_pause_from.setAccessibleName("Never pause starting from")
         self.never_pause_time.setAccessibleName("Never pause starting at")
@@ -672,14 +671,17 @@ class SettingsWindow(QWidget):
                                self.software_dimming))
         layout.addWidget(options)
         layout.addWidget(SectionLabel("When I'm away"))
-        away = Card()
+        away = self._away_card = Card()
         away.add(SettingRow("Dim displays when I'm away", "Any keyboard or mouse input restores brightness. Skipped while an "
                             "app keeps the screen on (video, calls, presentations) or a game runs in exclusive fullscreen",
                             self.idle_dim))
-        away.add(SettingRow("Dim after", "Time without keyboard or mouse input", self.idle_minutes))
-        away.add(SettingRow("Dim to", "Displays already below this level stay as they are", self.idle_level))
-        away.add(SettingRow("Never dim while these apps are in front", "For apps that don't keep the screen on themselves, "
-                            "such as some media players and call apps", below=self.idle_exempt_apps))
+        # Shown while it is on (_on_changed).
+        self._idle_rows = (
+            away.add(SettingRow("Dim after", "Time without keyboard or mouse input", self.idle_minutes)),
+            away.add(SettingRow("Dim to", "Displays already below this level stay as they are", self.idle_level)),
+            away.add(SettingRow("Never dim while these apps are in front", "For apps that don't keep the screen on themselves, "
+                                "such as some media players and call apps", below=self.idle_exempt_apps)),
+        )
         layout.addWidget(away)
         return page
 
@@ -736,17 +738,18 @@ class SettingsWindow(QWidget):
     def _shortcuts_page(self) -> QWidget:
         page, layout = _page("Shortcuts", "Keyboard shortcuts for brightness and night light, in any app.")
         layout.addWidget(self.shortcut_editor)
+        # Under the shortcuts it is about, not under the on-screen note.
+        self.keys_hint = SecondaryLabel("Fn, and many laptops' brightness keys, are handled by the keyboard or the laptop itself "
+                                        "and never reach Windows, so they can't be used. Keyboard software can make them send "
+                                        "F13 to F24, which can.", scale=0.9)
+        self.keys_hint.setWordWrap(True)
+        self.keys_hint.setContentsMargins(4, 8, 4, 0)
+        layout.addWidget(self.keys_hint)
         layout.addWidget(SectionLabel("On screen"))
         card = Card()
         card.add(SettingRow("Show the change on screen", "The new brightness or night light's state, for a moment above "
                             "the taskbar. Never over a game in fullscreen", self.shortcut_overlay))
         layout.addWidget(card)
-        hint = SecondaryLabel("Fn, and many laptops' brightness keys, are handled by the keyboard or the laptop itself and "
-                              "never reach Windows, so they can't be used. Keyboard software can make them send F13 to F24, "
-                              "which can.", scale=0.9)
-        hint.setWordWrap(True)
-        hint.setContentsMargins(4, 8, 4, 0)
-        layout.addWidget(hint)
         layout.addWidget(SectionLabel("Command line"))
         layout.addWidget(self._command_line_card())
         return page
@@ -1086,14 +1089,21 @@ class SettingsWindow(QWidget):
         }
         for widget, show in visible.items():
             self._night_card.set_row_visible(self._field_rows[widget], show)
+        # A switch's details show while it is on, as the brightness schedule's
+        # do: greyed out, they took room (an empty app list most of all) and
+        # said nothing.
         self.exempt_apps.setEnabled(self.pause_for_apps.isChecked())
+        self.exempt_apps.setVisible(self.pause_for_apps.isChecked())
         self._never_pause_when.setEnabled(self.never_pause.isChecked())
+        self._never_pause_when.setVisible(self.never_pause.isChecked())
         self.never_pause_time.setVisible(night_light.never_pause_from == "time")
         self._temperature_card.set_row_visible(self._field_rows[self.day_temperature], mode in (Mode.LOCATION, Mode.TIMES))
         self.night_temperature.setEnabled(night_light.enabled)
         self._night_card.set_row_visible(self._day_row, mode in (Mode.LOCATION, Mode.TIMES))  # a day that changes
         for field in (self.idle_minutes, self.idle_level, self.idle_exempt_apps):
             field.setEnabled(self.idle_dim.isChecked())
+        for row in self._idle_rows:
+            self._away_card.set_row_visible(row, self.idle_dim.isChecked())
         self._update_status()
         self._update_schedule_status()
         self.refresh_shortcut_status()

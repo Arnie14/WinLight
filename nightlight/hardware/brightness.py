@@ -31,6 +31,7 @@ class DisplayDetails:
     year: int = 0
     diagonal_inches: float = 0.0
     source: str = ""  # Windows' GDI name, e.g. "\\.\DISPLAY1"
+    hdr_capable: bool = False  # it can show HDR, on or not
 
 
 # How brightness reaches a display (MonitorInfo.channel), as shown to users.
@@ -201,9 +202,11 @@ class FakeBrightnessBackend:
         # One of each kind of control, and one display without any.
         self._monitors = [
             MonitorInfo(0, "DELL U2720Q", True, key="DEL41A2:7XKJ9F3", channel="ddc", display=r"\\.\DISPLAY1",
-                        details=DisplayDetails("DEL", "DELL U2720Q", "7XKJ9F3", "DisplayPort", False, 2021, 27.0, r"\\.\DISPLAY1")),
+                        details=DisplayDetails("DEL", "DELL U2720Q", "7XKJ9F3", "DisplayPort", False, 2021, 27.0, r"\\.\DISPLAY1",
+                                               hdr_capable=True)),  # HDR off, but it has it: DDC/CI while in HDR is a choice
             MonitorInfo(1, "LG 27GP950 (HDR)", True, key="GSM5BBF:204NTAB1", control="sdr", channel="sdr", display=r"\\.\DISPLAY2", hdr=True,
-                        details=DisplayDetails("GSM", "LG 27GP950", "204NTAB1", "HDMI", True, 2022, 27.0, r"\\.\DISPLAY2")),
+                        details=DisplayDetails("GSM", "LG 27GP950", "204NTAB1", "HDMI", True, 2022, 27.0, r"\\.\DISPLAY2",
+                                               hdr_capable=True)),
             MonitorInfo(2, "Living room TV", True, key="SAM7136", control="software", minimum=20, channel="software", display=r"\\.\DISPLAY3",
                         details=DisplayDetails("SAM", "SAMSUNG", "", "HDMI", False, 2019, 54.6, r"\\.\DISPLAY3")),
             MonitorInfo(3, "Old projector", False, key="EPS0000", reason="DDC/CI didn't answer", status="unsupported", display=r"\\.\DISPLAY4",

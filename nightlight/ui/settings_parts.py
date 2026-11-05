@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen
-from PySide6.QtWidgets import QAbstractButton, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractButton, QFrame, QHBoxLayout, QLabel, QSizePolicy, QTimeEdit, QVBoxLayout, QWidget
 
 from nightlight.ui.widgets import SecondaryLabel, blend, set_font, set_heading_font
 
@@ -49,6 +49,28 @@ def text_on(fill: QColor) -> QColor:
 
 def is_dark(palette: QPalette) -> bool:
     return palette.color(QPalette.ColorRole.Window).lightnessF() < 0.5
+
+
+def link_color(palette: QPalette) -> QColor:
+    """The accent colour as text, moved towards the text colour until it
+    reads at WCAG AA (4.5:1) on the window: a pale accent on light, or a
+    deep one on dark, would be hard to read."""
+    window, text = palette.color(QPalette.ColorRole.Window), palette.color(QPalette.ColorRole.WindowText)
+    color = accent(palette)
+    for step in range(11):
+        candidate = blend(color, text, step / 10)
+        if contrast(candidate, window) >= 4.5:
+            return candidate
+    return text
+
+
+def time_field() -> QTimeEdit:
+    """A 24-hour time whose arrows go round the clock: up from 23:00 is
+    00:00, as a bedtime or a schedule after midnight needs. Without it the
+    up arrow stopped at 23 and a later time had to be typed."""
+    field = QTimeEdit(displayFormat="HH:mm")
+    field.setWrapping(True)
+    return field
 
 
 class KeyboardFocusRing:
@@ -283,7 +305,9 @@ class PageTitle(QWidget):
 class ActionButton(KeyboardFocusRing, QAbstractButton):
     """A button as Windows 11 draws them: "accent" (filled with the accent
     colour, for the main action), "standard" (a quiet card with a hairline
-    border) or "subtle" (text only until hovered)."""
+    border), "subtle" (text only until hovered) or "link" (accent-coloured
+    text, as Windows' hyperlink buttons: it opens a page rather than acting,
+    and plain text didn't look like something to click)."""
 
     HEIGHT = 32
     RADIUS = 4.0
@@ -298,8 +322,9 @@ class ActionButton(KeyboardFocusRing, QAbstractButton):
         self.setAccessibleName(text)
 
     def sizeHint(self) -> QSize:
-        width = self.fontMetrics().horizontalAdvance(self.text()) + 2 * (14 if self.kind == "subtle" else 20)
-        return QSize(max(width, 0 if self.kind == "subtle" else 104), max(self.HEIGHT, self.fontMetrics().height() + 12))
+        quiet = self.kind in ("subtle", "link")
+        width = self.fontMetrics().horizontalAdvance(self.text()) + 2 * (14 if quiet else 20)
+        return QSize(max(width, 0 if quiet else 104), max(self.HEIGHT, self.fontMetrics().height() + 12))
 
     def hitButton(self, pos) -> bool:
         return self.rect().contains(pos)
@@ -321,9 +346,9 @@ class ActionButton(KeyboardFocusRing, QAbstractButton):
             elif hover:
                 fill = blend(fill, QColor("#ffffff") if not dark else QColor("#000000"), 0.1)
             label = text_on(fill)
-        elif self.kind == "subtle":
+        elif self.kind in ("subtle", "link"):
             fill = blend(window, text, 0.09 if down else 0.05) if (hover or down) and enabled else None
-            label = text
+            label = text if self.kind == "subtle" else link_color(palette)
         else:
             base = blend(window, QColor("#ffffff"), 0.7) if not dark else blend(window, QColor("#ffffff"), 0.06)
             fill = blend(base, text, 0.06 if down else 0.03) if (hover or down) and enabled else base

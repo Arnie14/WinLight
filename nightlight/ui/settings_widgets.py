@@ -82,7 +82,12 @@ class AppPicker(QDialog):
 class AppList(QWidget):
     """Apps chosen by executable name (to pause night light for, or never to
     dim for idle while in front): from the apps running now, the Start menu's
-    apps by name, or, as a last resort, a program file."""
+    apps by name, or, as a last resort, a program file.
+
+    The list is as tall as its apps, up to MAX_ROWS before it scrolls, and
+    with none it is a line saying so: a fixed box was mostly empty space."""
+
+    MAX_ROWS = 5
 
     changed = Signal()
 
@@ -94,8 +99,8 @@ class AppList(QWidget):
         self._picker: AppPicker | None = None
         self._browse_title = browse_title
         self.list = QListWidget()
-        self.list.setFixedHeight(96)
         self.list.setSortingEnabled(True)
+        self.empty = SecondaryLabel("No apps added yet", scale=0.9)
         self._add = QPushButton("Add an app")
         self._menu = QMenu(self)
         self._menu.aboutToShow.connect(self._fill_menu)
@@ -111,8 +116,10 @@ class AppList(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
+        layout.addWidget(self.empty)
         layout.addWidget(self.list)
         layout.addLayout(buttons)
+        self._fit()
 
     def apps(self) -> tuple[str, ...]:
         return tuple(sorted(self.list.item(i).text() for i in range(self.list.count())))
@@ -120,13 +127,27 @@ class AppList(QWidget):
     def set_apps(self, apps: tuple[str, ...]) -> None:
         self.list.clear()
         self.list.addItems(list(apps))
+        self._fit()
         self.changed.emit()
 
     def add(self, exe: str) -> None:
         exe = exe.strip().lower()
         if exe and exe not in self.apps():
             self.list.addItem(exe)
+            self._fit()
             self.changed.emit()
+
+    def _fit(self) -> None:
+        """As tall as its apps (up to MAX_ROWS), or the "none yet" line."""
+        count = self.list.count()
+        self.empty.setVisible(count == 0)
+        self.list.setVisible(count > 0)
+        self._remove.setVisible(count > 0)
+        if count:
+            row = self.list.sizeHintForRow(0)
+            if row <= 0:
+                row = self.list.fontMetrics().height() + 8
+            self.list.setFixedHeight(row * min(count, self.MAX_ROWS) + 2 * self.list.frameWidth() + 4)
 
     def _fill_menu(self) -> None:
         self._menu.clear()
@@ -170,6 +191,7 @@ class AppList(QWidget):
     def _remove_selected(self) -> None:
         for item in self.list.selectedItems():
             self.list.takeItem(self.list.row(item))
+        self._fit()
         self.changed.emit()
 
 
@@ -185,6 +207,17 @@ HDR_MANUAL_NOTE = (
     "features: its remembered brightness isn't restored, and the brightness schedule, the laptop's keys and shortcuts for "
     "every display leave it alone."
 )
+
+
+def hdr_setting_applies(monitor: MonitorInfo | None) -> bool:
+    """Whether "No automatic DDC/CI writes in HDR" means anything for this
+    display: its brightness goes over DDC/CI, and it can show HDR. Elsewhere
+    (a laptop panel, a TV dimmed through its colors, a monitor without HDR)
+    it would only be a box that does nothing."""
+    if monitor is None:
+        return False  # not connected: what it is isn't known now
+    ddc = monitor.channel in ("ddc", "ddc-high-level")
+    return ddc and (monitor.hdr or (monitor.details is not None and monitor.details.hdr_capable))
 
 
 class DisplayList(QWidget):
@@ -225,6 +258,7 @@ class DisplayList(QWidget):
         # version (without the serial) show on the display they belong to.
         lookup = AppConfig(displays=prefs)
         saved = {m.key: lookup.display(m.key) for m in monitors}
+        connected = {m.key: m for m in monitors}
         known = {m.key: m.name for m in monitors}
         stored = {p.key for p in prefs}
         moved = {m.key.split(":", 1)[0] for m in monitors if m.key not in stored}  # older keys now shown under the new
@@ -251,8 +285,13 @@ class DisplayList(QWidget):
             self._grid.addWidget(name, row, 0)
             self._grid.addWidget(show, row, 1)
             self._grid.addWidget(hdr_manual, row, 2)
+            # Only where it means something, or where it is on (so it can be
+            # turned off). Set once in the grid: shown without a parent, a
+            # widget opens as a window of its own.
+            hdr_manual.setVisible(hdr_setting_applies(connected.get(key)) or pref.hdr_manual)
             self._rows[key] = (name, show, hdr_manual)
-        if known:
+        shown = any(not hdr_manual.isHidden() for _name, _show, hdr_manual in self._rows.values())
+        if shown:
             self._grid.addWidget(self._hdr_note, len(known), 0, 1, 3)
-        self._hdr_note.setVisible(bool(known))
+        self._hdr_note.setVisible(shown)
         self.changed.emit()

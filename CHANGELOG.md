@@ -11,6 +11,13 @@ Changes in each version of Winlight, newest first. Version numbers follow the sc
 ### Changed
 
 - **Night light is on screen at once when Winlight starts**, about 0.5 s after starting rather than 5 s on the test laptop. It used to wait for the app to be built (Windows' set-up of the first window takes up to a second) and then fade in over almost 4 seconds; at sign-in the screen had been bright for long enough already. Turning night light on, the schedule and resuming still fade. A display already showing a fullscreen game or video at start stays untinted from the beginning.
+- **Settings is tidier** (from a review of every page):
+  - A switch's details show only while it is on: "Dim displays when I'm away", "Selected apps" and "Never pause late at night" no longer take room with greyed-out controls and an empty list. An app list is as tall as its apps (up to five before it scrolls), and says "No apps added yet" when empty.
+  - "No automatic DDC/CI writes in HDR" appears only for displays it applies to: controlled over DDC/CI, and able to show HDR (Windows says which). Where it is already on, it stays, so it can be turned off.
+  - Time fields go round the clock: up from 23:00 is 00:00, for a bedtime after midnight.
+  - A brightness schedule time by the sun says which way: "30 min after" or "15 min before" sunrise or sunset, rather than "30 min" or "-15 min". Typing a number, with a minus sign or "before", still works. Rows by the clock and by the sun line up.
+  - Kelvin is written one way everywhere: "3800 K" in the panel and the tray tooltip too.
+  - The note about Fn keys sits under the shortcuts it is about, and the welcome screen's "How to switch from another app" looks like the link it is.
 - **Buttons no longer keep a ring after a click** (Apply, Reset and the welcome screen's), as switches stopped doing in 0.7.5: the ring shows when the keyboard moves to them.
 - **Fades last as long as they should.** A 2-second change of temperature took nearly 4 seconds when the computer was busy, since it moved a fixed step at each timer tick; it follows the clock now.
 

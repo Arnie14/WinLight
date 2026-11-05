@@ -40,7 +40,7 @@ def test_menu_items_work(tray, text, signal):
 
 
 def test_tooltip_names_the_app_and_status(tray):
-    assert tray.toolTip().splitlines() == ["Winlight", "Night Light: On · 4500K"]
+    assert tray.toolTip().splitlines() == ["Winlight", "Night Light: On · 4500 K"]
 
 
 class FakeScheduler:

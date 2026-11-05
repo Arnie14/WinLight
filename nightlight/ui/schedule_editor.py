@@ -3,16 +3,53 @@
 
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import Qt, QTime, Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QValidator
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QToolButton, QVBoxLayout, QWidget
 
 from nightlight.config import MAX_SCHEDULE_POINTS, MAX_SUN_OFFSET_MINUTES, MAX_TRANSITION_MINUTES, Anchor, BrightnessScheduleConfig, SchedulePoint
 from nightlight.core.brightness_schedule import CUSTOM, PRESETS
-from nightlight.ui.settings_parts import Card, SettingRow, ToggleSwitch
+from nightlight.ui.settings_parts import Card, SettingRow, ToggleSwitch, time_field
 from nightlight.ui.widgets import SecondaryLabel
 
 ANCHOR_LABELS = {Anchor.CLOCK: "Time of day", Anchor.SUNRISE: "Sunrise", Anchor.SUNSET: "Sunset"}
 CONTROL_WIDTH = 230  # the right-hand controls of the card end on one line
+_OFFSET = re.compile(r"^\s*([+\-−]?)\s*(\d+)\s*(?:min)?\s*(after|before)?\s*$", re.IGNORECASE)
+
+
+def parse_offset(text: str) -> int | None:
+    """Minutes from "30 min after", "15 min before", "-15" or "45"; None if
+    it isn't one (yet: the user may be typing)."""
+    match = _OFFSET.match(text)
+    if match is None:
+        return None
+    sign, minutes, word = match.groups()
+    earlier = sign in ("-", "−") or (word or "").lower() == "before"
+    return -int(minutes) if earlier else int(minutes)
+
+
+class SunOffset(QSpinBox):
+    """Minutes before or after sunrise or sunset, said in words: a bare
+    "30 min" didn't say which. Typed as before, a number, with a minus sign
+    or "before" for earlier."""
+
+    def textFromValue(self, value: int) -> str:
+        if value == 0:
+            return "0 min"
+        return f"{abs(value)} min {'after' if value > 0 else 'before'}"
+
+    def valueFromText(self, text: str) -> int:
+        value = parse_offset(text)
+        return value if value is not None else self.value()
+
+    def validate(self, text: str, pos: int):
+        value = parse_offset(text)
+        if value is None:
+            return QValidator.State.Intermediate, text, pos
+        state = QValidator.State.Acceptable if self.minimum() <= value <= self.maximum() else QValidator.State.Invalid
+        return state, text, pos
 
 
 class PointRow(QWidget):
@@ -28,12 +65,15 @@ class PointRow(QWidget):
         for anchor, label in ANCHOR_LABELS.items():
             self.anchor.addItem(label, anchor)
         self.anchor.setFixedWidth(118)
-        self.time = QTimeEdit(displayFormat="HH:mm")
-        self.time.setFixedWidth(96)
-        self.offset = QSpinBox(minimum=-MAX_SUN_OFFSET_MINUTES, maximum=MAX_SUN_OFFSET_MINUTES, singleStep=15, suffix=" min")
-        self.offset.setToolTip("Minutes before (-) or after (+) sunrise or sunset")
-        # Room for the longest value and the arrows (Windows 11's style draws both side by side).
-        self.offset.setFixedWidth(max(96, self.offset.fontMetrics().horizontalAdvance(f"-{MAX_SUN_OFFSET_MINUTES} min") + 64))
+        self.time = time_field()
+        self.offset = SunOffset(minimum=-MAX_SUN_OFFSET_MINUTES, maximum=MAX_SUN_OFFSET_MINUTES, singleStep=15)
+        self.offset.setToolTip("Minutes before or after sunrise or sunset")
+        # Room for the longest value and the arrows (Windows 11's style draws
+        # both side by side); the time takes the same width, so a row by the
+        # clock and one by the sun line up.
+        width = max(96, self.offset.fontMetrics().horizontalAdvance(self.offset.textFromValue(-MAX_SUN_OFFSET_MINUTES)) + 64)
+        self.time.setFixedWidth(width)
+        self.offset.setFixedWidth(width)
         self.level = QSlider(Qt.Orientation.Horizontal, minimum=0, maximum=100, singleStep=5, pageStep=10)
         self.level.setToolTip("Brightness from this time on")
         self.level.setFixedWidth(150)

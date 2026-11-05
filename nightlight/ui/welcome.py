@@ -125,7 +125,7 @@ class WelcomeWindow(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
-        self.guide = ActionButton("How to switch from another app", "subtle")
+        self.guide = ActionButton("How to switch from another app", "link")  # opens a page in the browser
         self.guide.clicked.connect(self._open_guide)
         self.done = ActionButton("Done", "standard")
         self.done.clicked.connect(self.close)

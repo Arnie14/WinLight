@@ -38,7 +38,7 @@ def night_light_status(controller: NightLightController) -> str:
         phase = "Evening Transition" if evening else "Morning Transition"
     else:
         phase = "Night" if state.night_factor >= 1.0 else "Day"
-    return f"{phase} · {state.temperature}K"
+    return f"{phase} · {state.temperature} K"  # with a space, as everywhere else the app writes kelvin
 
 
 def paused_text(controller: NightLightController, display_name: Callable[[str], str] | None = None) -> str:

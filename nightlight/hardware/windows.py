@@ -846,6 +846,7 @@ def _details_of(target: win32.DisplayTarget) -> DisplayDetails:
         year=edid.year if edid else 0,
         diagonal_inches=edid.diagonal_inches if edid else 0.0,
         source=target.gdi_name,
+        hdr_capable=target.hdr_capable,
     )
 
 
