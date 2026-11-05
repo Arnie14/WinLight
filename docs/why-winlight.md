@@ -135,19 +135,12 @@ A brightness tool may suit you better if you rely on:
 - Keep true colors where they're needed: pause night light per display for fullscreen apps, listed apps, or automatically for media, games and color work; never open windows over a fullscreen game.
 - Protect the hardware: no DDC/CI to sleeping monitors, conservative probing, time limits on every monitor call, no fully black screen, and colors always put back.
 - Recover from sleep, waking, hotplugging, docks, driver errors and crashes without a restart, and log enough to diagnose a problem.
-- Keep personal details out of logs and reports, and send nothing anywhere.
+- Keep personal details out of logs and reports, and send nothing anywhere: the one connection, the update check, is off unless you turn it on, and only asks GitHub which version is newest.
 - Stay open and scriptable: free software under the GPL, a command line for automation, and a stated test status for every feature.
 
 ## About the project
 
 On Windows, brightness, night light and their schedules are spread across the system settings, monitor menus and separate apps, and none of them adjust per display to what is on the screen. Winlight brings them into one app for setups with several displays.
-
-It is also built in the open as a learning project, to:
-
-- Practice GUI programming with Python and Qt
-- Work with real Windows APIs
-- Handle cross-device compatibility (DDC/CI, multi-monitor)
-- Use AI tools (like ChatGPT or Copilot) effectively in software development
 
 ## Choosing
 

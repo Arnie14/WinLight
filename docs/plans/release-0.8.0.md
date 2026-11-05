@@ -2,6 +2,8 @@
 
 The work for 0.8.0, in three betas so each part is tested before the next. Written 2026-11-04. The MSIX details are in [msix-package.md](msix-package.md).
 
+Beta 1 was released on 2026-11-04. The next release, 0.8.5 Beta 1 (2026-11-05), brought changes from testing and testers' reports instead (see the [changelog](../../CHANGELOG.md)); Beta 2 and 3 below, the MSIX package and signing, are still to come.
+
 ## Beta 1: audit and groundwork
 
 1. **A precise audit of the code**, module by module, riskiest first: the native Windows code (`hardware/win32.py`, `hardware/winsystem.py`), the backends and time limits (`hardware/windows.py`, `hardware/calls.py`), the monitor queue (`brightness/monitors.py`), the night light controller, the system parts, then the UI. Each is checked against the design rules in [development.md](../development.md) and [windows-notes.md](../windows-notes.md). Small fixes are made with a regression test each; larger findings are reported for a decision. **Done** (2026-11-04): nine bugs fixed; see [the audit report](../history/audit-0.8.0.md).

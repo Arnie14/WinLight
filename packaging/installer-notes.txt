@@ -8,7 +8,7 @@ Source code, releases and the issue tracker: https://github.com/Arnie14/WinLight
 
 DISCLAIMER
 
-This is a beta release for Windows 11 (64-bit). It has been tested on Windows 11 with a laptop panel; external monitors, TVs and HDR displays vary widely and are still being tested. Winlight is provided as is, without warranty of any kind (see the license). It only changes display brightness and color settings that Windows exposes, and puts colors back to normal when it quits, but use it at your own risk.
+This is a beta release for Windows 11 (64-bit). It has been tested on Windows 11 with a laptop panel, and by a tester with an external monitor over DDC/CI; other monitors, TVs and HDR displays vary widely and are still being tested. Winlight is provided as is, without warranty of any kind (see the license). It only changes display brightness and color settings that Windows exposes, and puts colors back to normal when it quits, but use it at your own risk.
 
 Winlight is not yet code-signed, so Windows SmartScreen may warn about it. Choose "More info", then "Run anyway".
 

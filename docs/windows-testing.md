@@ -219,7 +219,7 @@ Settings > Brightness > **Change brightness by time of day**:
 
 ## 10. Diagnostics and privacy
 
-- [ ] Tray > Report a Problem…: a zip in `%LOCALAPPDATA%\WinLight\Reports` with summary.txt, settings.json and the logs; the summary on the clipboard; Show File opens the folder with the zip selected; Open GitHub Issues opens the issue page.
+- [ ] Tray > Report a Problem…: a zip in `%LOCALAPPDATA%\WinLight\Reports` with summary.txt, settings.json and the logs; the summary on the clipboard; Show File opens the folder with the zip selected; Open GitHub Issues opens the problem form, with the version filled in.
 - [ ] Open `WinLight.log` and the zip: your Windows user name, computer name and email don't appear anywhere (look for `<user>`, `<computer>`, `<home>` instead), nor your city, coordinates, custom display names or listed apps.
 - [ ] The log has no line saying a gamma ramp call "hasn't returned". If it has one, the display driver held Winlight up: send the log, with what was happening (waking, a game starting, a driver update).
 - [ ] If a monitor ever freezes Winlight: end it in Task Manager and start it again. That display shows "Skipped: Winlight stopped while talking to this display last time"; ⟳ tries it again.
