@@ -135,6 +135,10 @@ MUTATIONS = [
      "        self._clock_changed = True\n",
      "        self._clock_changed = True\n        self._last_ticks = self._ticks()\n",
      ["tests/test_watcher.py::test_windows_syncing_the_clock_as_it_wakes_doesnt_hide_the_wake"]),
+    ("DDC/CI monitors are written before they are detected again", "nightlight/brightness/monitors.py",
+     '        return info is not None and info.internal and info.channel == "wmi"',
+     "        return info is not None",
+     ["tests/test_monitor_service.py::test_after_the_screens_come_back_on_the_laptop_panel_is_set_before_detection"]),
 ]
 
 

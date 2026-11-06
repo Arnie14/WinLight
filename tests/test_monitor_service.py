@@ -677,3 +677,34 @@ def test_events_said_on_the_callers_thread_come_after_the_lock_is_let_go():
     service.request_write(Write("A", 80))
     service.request_write(Write("A", 30, RESTORE, require_awake=True))  # superseded: an event, said on this thread
     assert held_during_event == [False]
+
+
+class PanelAndMonitor(ScriptedBackend):
+    """PANEL is a laptop's built-in display, set through Windows (WMI)."""
+
+    def list_monitors(self):
+        import dataclasses
+
+        self.current = [dataclasses.replace(m, internal=True, channel="wmi") if m.key == "PANEL" else
+                        dataclasses.replace(m, channel="ddc") for m in super().list_monitors()]
+        return list(self.current)
+
+
+def test_after_the_screens_come_back_on_the_laptop_panel_is_set_before_detection():
+    """Writes wait for the next detection after the screens come back on
+    (handles from before may be stale), but the laptop panel's goes through
+    Windows: no handle, nothing over a cable. A panel dimmed for idle came
+    back dimmed for 3 s, waiting. A monitor's DDC/CI write still waits."""
+    backend = PanelAndMonitor([("PANEL", True), ("DELL", True)])
+    service, _events, clock = make(backend)
+    detect(service, clock)
+    service.suspend()
+    service.request_write(Write("PANEL", 60, RESTORE, require_awake=True))
+    service.request_write(Write("DELL", 70, RESTORE, require_awake=True))
+    service.run_pending()
+    assert backend.sets() == []  # screens off: nothing at all
+    service.resume()
+    assert service.run_pending() == ["write"]  # once: not handed out and put back again and again
+    assert backend.sets() == [("PANEL", 60)]  # the panel at once, the Dell not yet
+    detect(service, clock)
+    assert backend.sets() == [("PANEL", 60), ("DELL", 70)]

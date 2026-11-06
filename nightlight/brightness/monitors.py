@@ -347,8 +347,16 @@ class MonitorService:
         if self._detect and not self._suspended and not self._detection_stuck and self._detection_due():
             self._detect = self._detect_forced = False
             return "detect", None
-        if self._suspended or self._awaiting_detection:
+        if self._suspended:
             return None
+        if self._awaiting_detection:
+            # Back on, handles from before may be stale: commands wait for the
+            # next detection. Not the laptop panel's, set through Windows (WMI):
+            # it has no handle to go stale and sends nothing over a cable. A
+            # panel dimmed for idle stayed dim for 3 s after the screen came
+            # back on, waiting for that detection.
+            key = next((key for key in self._writes if self._through_windows(key)), None)
+            return None if key is None else ("write", self._writes.pop(key))
         if self._writes:
             key = next(iter(self._writes))
             return "write", self._writes.pop(key)
@@ -356,6 +364,11 @@ class MonitorService:
             reads, self._reads = self._reads, None
             return "read", sorted(reads)
         return None
+
+    def _through_windows(self, key: str) -> bool:
+        """Whether this display's brightness is the laptop panel's, set through Windows (WMI)."""
+        info = self._by_key.get(key)
+        return info is not None and info.internal and info.channel == "wmi"
 
     def _detect_interval(self) -> float:
         """Detections are at least this far apart; longer after failed ones (1, 2, 4… up to 64 s)."""
@@ -534,7 +547,7 @@ class MonitorService:
                     log.info("%s is in standby; setting its brightness later", info.name)
                     self._emit(Deferred(write.key, write.value, write.source, "asleep"))
                     return
-                if self._held_back():  # the PC went to sleep during that check
+                if self._held_back(write.key):  # the PC went to sleep during that check
                     with self._cond:
                         self._writes.setdefault(write.key, write)
                     return
@@ -573,7 +586,7 @@ class MonitorService:
                     log.debug("A newer change for %s came while fading; stopping at %d%%", info.name, steps[i - 1])
                     return False
                 time.sleep(FADE_STEP_S)
-                if self._held_back():
+                if self._held_back(write.key):
                     # Sleep came mid-fade: the level still goes out, after
                     # waking and detecting again (unless a newer one replaces it).
                     with self._cond:
@@ -586,11 +599,15 @@ class MonitorService:
                 self._emit(Commanded(write.key, step, write.source))  # the fade so far, for the slider
         return True
 
-    def _held_back(self) -> bool:
-        """Asleep, or awake but not detected again yet: nothing may be sent now.
-        Work that spans several calls checks this between them."""
+    def _held_back(self, key: str | None = None) -> bool:
+        """Asleep, or awake but not detected again yet: nothing may be sent now,
+        but to the laptop panel through Windows, which needn't wait for that
+        detection (as in _take_work: were they to disagree, a write handed out
+        and put back would go round for ever). Work that spans several calls
+        checks this between them."""
         with self._cond:
-            return self._suspended or self._awaiting_detection or self._closing
+            waiting = self._awaiting_detection and not (key is not None and self._through_windows(key))
+            return self._suspended or waiting or self._closing
 
     def _do_read(self, keys: list[str]) -> None:
         for key in keys:
