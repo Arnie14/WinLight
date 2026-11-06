@@ -2,6 +2,18 @@
 
 Changes in each version of Winlight, newest first. Version numbers follow the scheme in [docs/development.md](docs/development.md#versions-and-releases). Earlier, more detailed reports are kept in [docs/history/](docs/history/).
 
+## 0.8.7 Beta 1 (2026-11-06)
+
+### Fixed
+
+- **Coming back to a screen Windows had turned off, it was still dimmed for a few seconds.** With "Dim displays when I'm away" on, Windows' own screen timeout turned the screen off over Winlight's dimming and brought it back at that level, and the laptop screen stayed dim until Winlight had detected the displays again. Winlight now reads when Windows dims or turns the screen off (from your power plan, without changing it) and brings the brightness back a few seconds before, so the screen wakes at its usual level. Where Windows would dim or turn the screen off before Winlight's own dimming time, Winlight doesn't dim it at all. While the PC is locked, the lock screen's own timeout (a minute after locking, by default) counts too.
+- **The laptop screen's brightness comes back as soon as the screen is on**, however it went off (a lid, presence sensing), rather than after Winlight has detected the displays again, about 3 s later. It is set through Windows, so it needn't wait; external monitors over DDC/CI still do.
+
+### Added
+
+- **The welcome screen asks you to turn off Windows' automatic brightness** when it's on, as it does for Windows Night Light, with a button to Windows' display settings: it follows the room's light and moves the levels Winlight sets, the schedule's and your own. Winlight checks that the PC has a light sensor first; without one, the setting does nothing and Windows doesn't show it.
+- **Settings > Brightness > When I'm away says what Windows' screen timeout does** beside Winlight's dimming, and **Screen timeout…** opens Windows' settings to change it or turn it off.
+
 ## 0.8.6 Beta 1 (2026-11-05)
 
 ### Changed
