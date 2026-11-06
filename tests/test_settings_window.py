@@ -916,3 +916,35 @@ def test_quitting_the_app_is_never_held_up_by_unsaved_changes(window):
     window.close()  # as quitting closes it: not spontaneous
     assert not window.isVisible() and window._close_box is None
     assert window.current_config() == window._saved
+
+
+def test_the_note_on_windows_screen_timeout_says_who_dims_first():
+    from nightlight.ui.settings_window import windows_timeout_note
+
+    assert windows_timeout_note(None, None, 5) == ""  # Windows never dims or turns it off: nothing to say
+    note = windows_timeout_note(885, 900, 5)  # the test laptop on mains
+    assert note.startswith("Windows dims the screen after 14 min 45 s. Winlight dims it first")
+    assert "wakes at its usual brightness" in note and "changed or turned off" in note
+    first = windows_timeout_note(None, 300, 5)  # Windows at 5 min, Winlight at 5: Windows first
+    assert first.startswith("Windows turns the screen off after 5 min, before Winlight would dim it at 5 min")
+    assert "Choose a shorter time above, or a longer screen timeout in Windows" in first
+
+
+def test_windows_screen_timeout_row_shows_while_dimming_is_on_and_reads_windows_afresh():
+    controller = NightLightController(FakeGamma(), KYIV, lambda: datetime(2026, 6, 15, 12, tzinfo=UTC))
+    windows = {"now": (None, 900, 60)}
+    window = SettingsWindow(controller, AppConfig(KYIV), screen_timeouts=lambda: windows["now"])
+    row = window._windows_timeout_row
+    assert row.isHidden()  # idle dimming is off by default
+    window.idle_dim.setChecked(True)
+    assert not row.isHidden() and "after 15 min" in row.description.text()
+    window.idle_minutes.setValue(15)  # at Windows' own time: Windows first
+    assert "so Winlight doesn't dim it" in row.description.text()
+    windows["now"] = (None, None, 60)  # Windows' timeout turned off meanwhile
+    window.show()
+    assert row.isHidden()
+    without = SettingsWindow(controller, AppConfig(KYIV))  # no reading (not Windows): no row
+    without.idle_dim.setChecked(True)
+    assert without._windows_timeout_row.isHidden()
+    window.close()
+    controller.shutdown()

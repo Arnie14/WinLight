@@ -22,6 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import PureWindowsPath
+from typing import NamedTuple
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Signal
 
@@ -260,6 +261,131 @@ def display_required() -> bool:
     except OSError:
         return False
     return status == 0 and bool(state.value & ES_DISPLAY_REQUIRED)
+
+
+# Windows' own screen timeouts: the power plan's "dim display after" and "turn
+# off display after" (seconds without input; 0 is never), one each for mains
+# and battery. Idle dimming undoes itself before them (brightness/idle_dim.py).
+GUID_VIDEO_SUBGROUP = uuid.UUID("7516b95f-f776-4464-8c53-06167f40cc99")
+GUID_VIDEO_DIM_TIMEOUT = uuid.UUID("17aaa29b-8b43-4b94-aafe-35f64daaf1ee")
+GUID_VIDEO_POWERDOWN_TIMEOUT = uuid.UUID("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e")
+# On the lock screen: "console lock display off timeout", hidden in Settings (60 s by default).
+GUID_VIDEO_CONSOLE_LOCK_TIMEOUT = uuid.UUID("8ec4b3a5-6868-48c2-be75-4f3044be88a7")
+
+
+class ScreenTimeouts(NamedTuple):
+    """Seconds without input before Windows acts on the screen; None for never."""
+
+    dim: int | None = None  # dims it
+    off: int | None = None  # turns it off
+    locked: int | None = None  # turns it off on the lock screen
+
+
+AC_LINE_OFFLINE = 0  # SYSTEM_POWER_STATUS.ACLineStatus on battery (1: mains, 255: unknown)
+
+
+class SYSTEM_POWER_STATUS(ctypes.Structure):
+    _fields_ = [("ACLineStatus", ctypes.c_ubyte), ("BatteryFlag", ctypes.c_ubyte), ("BatteryLifePercent", ctypes.c_ubyte),
+                ("SystemStatusFlag", ctypes.c_ubyte), ("BatteryLifeTime", ctypes.c_uint32), ("BatteryFullLifeTime", ctypes.c_uint32)]
+
+
+def _video_settings(*settings: uuid.UUID) -> list[int | None]:
+    """The power plan's display settings, for the plan and the power source
+    in use; None for each that can't be read. Only reads."""
+    status = SYSTEM_POWER_STATUS()
+    on_battery = bool(_kernel32.GetSystemPowerStatus(ctypes.byref(status))) and status.ACLineStatus == AC_LINE_OFFLINE
+    scheme = ctypes.POINTER(_GUID)()
+    if _powrprof.PowerGetActiveScheme(None, ctypes.byref(scheme)) != 0 or not scheme:
+        return [None] * len(settings)
+    try:
+        read = _powrprof.PowerReadDCValueIndex if on_battery else _powrprof.PowerReadACValueIndex
+        subgroup = _GUID.from_uuid(GUID_VIDEO_SUBGROUP)
+        found = []
+        for setting in settings:
+            value = ctypes.c_uint32()
+            ok = read(None, scheme, ctypes.byref(subgroup), ctypes.byref(_GUID.from_uuid(setting)), ctypes.byref(value)) == 0
+            found.append(int(value.value) if ok else None)
+        return found
+    finally:
+        _kernel32.LocalFree(ctypes.cast(scheme, ctypes.c_void_p))
+
+
+def screen_timeouts() -> ScreenTimeouts:
+    """After how many seconds without input Windows dims the screen, turns
+    it off, and turns it off on the lock screen, by the power plan in use for
+    the power source in use; None for never, or where it can't be read. Only reads."""
+    if sys.platform != "win32":
+        return ScreenTimeouts()
+    found = _video_settings(GUID_VIDEO_DIM_TIMEOUT, GUID_VIDEO_POWERDOWN_TIMEOUT, GUID_VIDEO_CONSOLE_LOCK_TIMEOUT)
+    return ScreenTimeouts(*(value or None for value in found))  # 0 is never
+
+
+# Windows' automatic brightness ("Change brightness automatically when lighting
+# changes"): the power plan's adaptive brightness, which only acts with an
+# ambient light sensor. It moves the panel's level by itself, over the levels
+# Winlight sets (the schedule's, the user's), as Windows Night Light tints
+# over Winlight's. The plan has the value on PCs without a sensor too, where
+# Settings doesn't even show the switch: so the sensor is asked for first,
+# through Windows' Sensor API (ISensorManager, as Settings does).
+GUID_VIDEO_ADAPTIVE_BRIGHTNESS = uuid.UUID("fbd9aa66-9553-4097-ba44-ed6e9d65eab8")
+CLSID_SENSOR_MANAGER = uuid.UUID("77a1c827-fcd2-4689-8915-9d613cc5fa3e")
+IID_ISENSOR_MANAGER = uuid.UUID("bd77db67-45a8-42dc-8d00-6dcf15f8377a")
+SENSOR_TYPE_AMBIENT_LIGHT = uuid.UUID("97f115c8-599a-4153-8894-d2d12899918a")
+CLSCTX_INPROC_SERVER = 1
+COINIT_APARTMENTTHREADED = 2
+HRESULT_NOT_FOUND = -2147023728  # HRESULT_FROM_WIN32(ERROR_NOT_FOUND): no sensor of that type
+_RELEASE = 2  # IUnknown::Release's place in every COM object's table of methods
+_GET_SENSORS_BY_TYPE = 4  # ISensorManager::GetSensorsByType's
+
+
+def _com_method(obj: ctypes.c_void_p, index: int, prototype):
+    """The `index`-th method of a COM object (its table of methods comes first)."""
+    table = ctypes.cast(ctypes.cast(obj, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+    return prototype(table[index])
+
+
+def ambient_light_sensor() -> bool | None:
+    """Whether the PC has a light sensor; None if Windows can't tell. Only asks."""
+    if sys.platform != "win32":
+        return None
+    initialized = _ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+    try:
+        manager = ctypes.c_void_p()
+        if _ole32.CoCreateInstance(ctypes.byref(_GUID.from_uuid(CLSID_SENSOR_MANAGER)), None, CLSCTX_INPROC_SERVER,
+                                   ctypes.byref(_GUID.from_uuid(IID_ISENSOR_MANAGER)), ctypes.byref(manager)) != 0 or not manager:
+            return None
+        try:
+            sensors = ctypes.c_void_p()
+            found = _com_method(manager, _GET_SENSORS_BY_TYPE, _GET_SENSORS_BY_TYPE_PROTO)(
+                manager, ctypes.byref(_GUID.from_uuid(SENSOR_TYPE_AMBIENT_LIGHT)), ctypes.byref(sensors))
+            if sensors:
+                _com_method(sensors, _RELEASE, _RELEASE_PROTO)(sensors)
+            if found == 0:
+                return True
+            return False if found == HRESULT_NOT_FOUND else None
+        finally:
+            _com_method(manager, _RELEASE, _RELEASE_PROTO)(manager)
+    except OSError:
+        return None
+    finally:
+        if initialized in (0, 1):  # S_OK, S_FALSE: this call's to undo (not RPC_E_CHANGED_MODE)
+            _ole32.CoUninitialize()
+
+
+def automatic_brightness_on() -> bool | None:
+    """Whether Windows' automatic brightness is on, for the power source in
+    use, on a PC with a light sensor for it; None if that can't be told."""
+    if sys.platform != "win32":
+        return None
+    sensor = ambient_light_sensor()
+    if sensor is False:
+        return False  # nothing for it to follow: the plan's value does nothing
+    [adaptive] = _video_settings(GUID_VIDEO_ADAPTIVE_BRIGHTNESS)
+    if adaptive == 0:
+        return False
+    if adaptive is None or sensor is None:
+        return None  # on in the plan, but no telling whether there is a sensor to follow
+    return True
 
 
 def running_apps() -> list[str]:
@@ -770,8 +896,10 @@ EXPECTED_OFFSETS = {
     "LASTINPUTINFO": (LASTINPUTINFO, {"cbSize": 0, "dwTime": 4}),
     "_GUID": (_GUID, {"Data1": 0, "Data2": 4, "Data3": 6, "Data4": 8}),
     "_POWERBROADCAST_SETTING": (_POWERBROADCAST_SETTING, {"PowerSetting": 0, "DataLength": 16, "Data": 20}),
+    "SYSTEM_POWER_STATUS": (SYSTEM_POWER_STATUS, {"ACLineStatus": 0, "BatteryFlag": 1, "BatteryLifePercent": 2,
+                                                  "SystemStatusFlag": 3, "BatteryLifeTime": 4, "BatteryFullLifeTime": 8}),
 }
-EXPECTED_SIZES = {"LASTINPUTINFO": 8, "_GUID": 16, "_POWERBROADCAST_SETTING": 24}
+EXPECTED_SIZES = {"LASTINPUTINFO": 8, "_GUID": 16, "_POWERBROADCAST_SETTING": 24, "SYSTEM_POWER_STATUS": 12}
 
 
 def layout_problems() -> list[str]:
@@ -813,6 +941,26 @@ if sys.platform == "win32":
     _advapi32.GetLengthSid.restype = wintypes.DWORD
     _powrprof.CallNtPowerInformation.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong]
     _powrprof.CallNtPowerInformation.restype = ctypes.c_long
+    _powrprof.PowerGetActiveScheme.argtypes = [wintypes.HKEY, ctypes.POINTER(ctypes.POINTER(_GUID))]
+    _powrprof.PowerGetActiveScheme.restype = wintypes.DWORD
+    for _read in (_powrprof.PowerReadACValueIndex, _powrprof.PowerReadDCValueIndex):
+        _read.argtypes = [wintypes.HKEY, ctypes.POINTER(_GUID), ctypes.POINTER(_GUID), ctypes.POINTER(_GUID), ctypes.POINTER(ctypes.c_uint32)]
+        _read.restype = wintypes.DWORD
+    _kernel32.GetSystemPowerStatus.argtypes = [ctypes.POINTER(SYSTEM_POWER_STATUS)]
+    _kernel32.GetSystemPowerStatus.restype = wintypes.BOOL
+    _kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    _kernel32.LocalFree.restype = ctypes.c_void_p
+    _ole32 = ctypes.WinDLL("ole32")
+    _ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    _ole32.CoInitializeEx.restype = ctypes.c_long
+    _ole32.CoUninitialize.argtypes = []
+    _ole32.CoUninitialize.restype = None
+    _ole32.CoCreateInstance.argtypes = [ctypes.POINTER(_GUID), ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(_GUID),
+                                        ctypes.POINTER(ctypes.c_void_p)]
+    _ole32.CoCreateInstance.restype = ctypes.c_long
+    _RELEASE_PROTO = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+    _GET_SENSORS_BY_TYPE_PROTO = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(_GUID),
+                                                    ctypes.POINTER(ctypes.c_void_p))
     _user32.GetLastInputInfo.argtypes = [ctypes.c_void_p]
     _user32.GetLastInputInfo.restype = wintypes.BOOL
     _kernel32.GetTickCount.restype = wintypes.DWORD

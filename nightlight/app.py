@@ -140,6 +140,7 @@ class NightLightApp:
             self._hidden_keys,
             gamma,
             scheduler=self.scheduler,
+            windows_timeouts=winsystem.screen_timeouts,
         )
         self.power_source = PowerSourceKeeper(self.monitors)
         self.brightness_keys = BrightnessKeys(self.monitors, self._hidden_keys, held=self.power_source.settling)
@@ -201,6 +202,9 @@ class NightLightApp:
         self.system_events = winsystem.SystemEvents(qapp)
         self.system_events.endingSession.connect(self._end_session)  # signing out: there may be no later chance
         self.system_events.unlocked.connect(self._on_unlocked)
+        # The lock screen turns the screen off sooner (a minute by default): idle dimming plans for it.
+        self.system_events.locked.connect(self.idle_dimmer.on_locked)
+        self.system_events.unlocked.connect(self.idle_dimmer.on_unlocked)
         self.system_events.displayChanged.connect(self.controller.reapply_now)  # at once; detection follows once settled
         self.system_events.panelBrightness.connect(self._on_panel_brightness)
         # Keyboard shortcuts, registered on the same hidden window.
@@ -271,6 +275,7 @@ class NightLightApp:
                 self.controller, lambda: self._config, self.monitors, programs=winsystem.running_programs,
                 open_settings=self.show_settings,
                 tray_hidden=winsystem.tray_icon_hidden if self.tray is not None else (lambda: None),
+                automatic_brightness=winsystem.automatic_brightness_on,
                 starts_at_sign_in=self._starts_at_sign_in,
                 start_at_sign_in=self._set_start_at_sign_in if self._autostart is not None else None)
         self._welcome.set_windows_night_light(self._windows_night_light)
@@ -334,6 +339,7 @@ class NightLightApp:
                 pause_shortcuts=self.shortcuts.pause,
                 check_updates=self.updates.check_now,
                 show_welcome=self.show_welcome,
+                screen_timeouts=winsystem.screen_timeouts,
             )
             self._settings.applied.connect(self._apply_settings)
             self.shortcuts.changed.connect(self._settings.refresh_shortcut_status)

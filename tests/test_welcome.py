@@ -351,3 +351,31 @@ def test_on_a_short_screen_the_cards_scroll_and_the_buttons_stay_in_view(monkeyp
         window.close()
         tall.close()
         controller.shutdown()
+
+
+def test_windows_automatic_brightness_is_named_with_a_way_to_turn_it_off():
+    """Like Windows Night Light: it moves the levels Winlight sets (the
+    schedule's, the user's), so the user is asked to turn it off."""
+    [found] = findings(None, set(), automatic_brightness=True)
+    assert found.title == "Windows changes the brightness by itself" and found.url == "ms-settings:display" and found.action
+    assert "Change brightness automatically when lighting changes" in found.description
+    assert "Change brightness based on content" in found.description  # the other one, if Windows offers it
+    assert findings(None, set(), automatic_brightness=False) == []
+    assert findings(None, set(), automatic_brightness=None) == []  # can't tell (no sensor known): nothing said
+
+
+def test_the_window_asks_windows_about_automatic_brightness_each_time_it_looks():
+    night_light = NightLightConfig(enabled=True, mode=Mode.ALWAYS)
+    controller = NightLightController(FakeGamma(), night_light, lambda: NOON, start=False)
+    automatic = {"on": True}
+    window = WelcomeWindow(controller, lambda: AppConfig(night_light), Monitors([PANEL]), automatic_brightness=lambda: automatic["on"])
+    try:
+        window.show()
+        window.refresh()
+        assert window.found == ["Windows changes the brightness by itself"]
+        automatic["on"] = False  # turned off in Windows' settings
+        window.refresh()
+        assert window.found == ["Nothing here clashes with Winlight"]
+    finally:
+        window.close()
+        controller.shutdown()

@@ -35,11 +35,23 @@ Safety rules:
   before dimming. While dimmed, the schedule and restores hold off, so
   nothing brightens an idle screen.
 - Quitting while dimmed puts the levels back first.
+
+Windows' own screen timeout (its power plan's "dim display" and "turn off
+display" times, read only): Windows turned the screen off with Winlight's
+dimming still on, and brought it back at that dimmed level; a laptop panel
+then stayed dim for seconds after waking, as nothing is sent to a display
+until it is detected again. So the dimming is undone WINDOWS_LEAD_S before
+Windows dims or turns the screen off, and the screen goes dark, and comes
+back, at its usual level; it isn't dimmed again until input. Where Windows
+would get there first, it isn't dimmed at all: it would only be undone.
+While the PC is locked, the lock screen's own timeout counts too (Windows
+turns the screen off a minute after locking, or after the last input there).
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QTimer
@@ -54,6 +66,13 @@ WATCH_MS = 300  # while dimmed: notice input quickly
 # The software layer fades in these steps (the hardware ones fade by themselves).
 FADE_STEPS = 8
 FADE_STEP_MS = 60
+# Undone this long before Windows dims or turns the screen off: room for the
+# hardware fade, and for a check (every WATCH_MS) to come round.
+WINDOWS_LEAD_S = 8.0
+WINDOWS_READ_S = 5.0  # Windows' timeouts are read again at most this often
+# Not dimmed at all if it would last less than this before being undone for
+# Windows: a screen dimmed for a few seconds, then brightened, looks broken.
+MIN_DIMMED_S = 30.0
 
 
 class IdleDimmer(QObject):
@@ -67,6 +86,9 @@ class IdleDimmer(QObject):
         gamma=None,  # a gamma backend with set_idle_dim, for software dimming
         parent: QObject | None = None,
         scheduler=None,  # the brightness schedule, held back while dimmed like restores
+        # winsystem.screen_timeouts: (dim, off, lock screen off) in seconds, None for never
+        windows_timeouts: Callable[[], tuple[int | None, int | None, int | None]] = lambda: (None, None, None),
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(parent)
         self._monitors = monitors
@@ -79,6 +101,11 @@ class IdleDimmer(QObject):
         self._level = 20
         self._gamma = gamma if hasattr(gamma, "set_idle_dim") else None
         self._scheduler = scheduler
+        self._windows_timeouts = windows_timeouts
+        self._clock = clock
+        self._windows: tuple[float, tuple[int | None, int | None, int | None]] | None = None  # (read at, timeouts)
+        self._locked_at: float | None = None  # when the PC was locked (the clock's time), while locked
+        self._handed_over = False  # undone for Windows' timeout: not dimmed again until input
         self._before: dict[str, int] | None = None  # display key -> level before dimming, while dimmed
         self._software: list[str] = []  # displays dimmed in software, while dimmed
         self._fade: list[dict[str, int]] = []  # software levels still to apply, one per step
@@ -122,19 +149,62 @@ class IdleDimmer(QObject):
 
     def check(self) -> None:
         idle = self._idle_seconds()
+        if idle < self._after_s:
+            self._handed_over = False  # input again: dimming may come back
         if self.dimmed:
             if idle < self._after_s:
                 self.wake()
-        elif self._enabled and idle >= self._after_s and not self._keeps_display_on():
-            self._dim(idle)
+            elif (windows := self.windows_in(idle)) is not None and windows <= WINDOWS_LEAD_S:
+                log.info("Windows dims or turns the screen off in %s; bringing displays back first, so they come back at "
+                         "their usual level", duration(max(0.0, windows)))
+                self._handed_over = True
+                self.wake(why="")
+        elif self._enabled and not self._handed_over and idle >= self._after_s and not self._keeps_display_on():
+            if (windows := self.windows_in(idle)) is not None and windows <= WINDOWS_LEAD_S + MIN_DIMMED_S:
+                self._handed_over = True  # Windows gets there first: dimming now would only be undone
+                log.info("Not dimming: Windows dims or turns the screen off in %s", duration(max(0.0, windows)))
+            else:
+                self._dim(idle)
 
-    def wake(self) -> None:
-        """Input again (or the feature turned off, or quitting): bring every display back."""
+    def on_locked(self) -> None:
+        """The PC was locked: the lock screen's own timeout counts from now."""
+        if self._locked_at is None:
+            self._locked_at = self._clock()
+
+    def on_unlocked(self) -> None:
+        self._locked_at = None
+
+    def windows_in(self, idle: float) -> float | None:
+        """Seconds until Windows first dims or turns off the screen, by its
+        power plan (and, while locked, the lock screen's timeout, counted from
+        the lock or the last input there, whichever came later); None for
+        never or not known."""
+        dim, off, locked = self._read_windows()
+        left = [after - idle for after in (dim, off) if after]
+        if locked and self._locked_at is not None:
+            left.append(locked - min(idle, self._clock() - self._locked_at))
+        return min(left) if left else None
+
+    def _read_windows(self) -> tuple[int | None, int | None, int | None]:
+        now = self._clock()
+        if self._windows is None or now - self._windows[0] >= WINDOWS_READ_S:
+            try:
+                dim, off, locked = self._windows_timeouts()
+            except Exception:  # a failure here must never stop idle dimming
+                log.debug("Could not read Windows' screen timeouts", exc_info=True)
+                dim = off = locked = None
+            self._windows = (now, (dim, off, locked))
+        return self._windows[1]
+
+    def wake(self, why: str = "Input again") -> None:
+        """Input again (or the feature turned off, or quitting, or Windows'
+        timeout coming): bring every display back."""
         if self._before is None:
             return
         before, self._before = self._before, None
         self._memory.set_held(False)
-        log.info("Input again; bringing displays back from idle dimming")
+        if why:
+            log.info("%s; bringing displays back from idle dimming", why)
         for monitor in self._monitors.monitors:
             if monitor.key in before:
                 level = self._memory.target(monitor)
@@ -191,3 +261,12 @@ class IdleDimmer(QObject):
             self._fade_timer.stop()
             return
         self._gamma.set_idle_dim(self._fade.pop(0))
+
+
+def duration(seconds: float) -> str:
+    """600 -> "10 min", 885 -> "14 min 45 s", 45 -> "45 s", 7200 -> "2 h"."""
+    seconds = round(seconds)
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    parts = [f"{hours} h"] * bool(hours) + [f"{minutes} min"] * bool(minutes) + [f"{secs} s"] * bool(secs)
+    return " ".join(parts) or "0 s"

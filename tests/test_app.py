@@ -789,3 +789,12 @@ def test_report_a_problems_open_github_issues_opens_the_problem_form(start, monk
     night_light._report_box.open_issues.click()
     assert opened == [app_module.diagnostics.issue_url()]
     QGuiApplication.clipboard().clear()
+
+
+def test_idle_dimming_hears_when_the_pc_is_locked_and_unlocked(start):
+    """The lock screen turns the screen off sooner (a minute by default)."""
+    night_light, _ = start(GeneralConfig())
+    night_light.system_events.locked.emit()
+    assert night_light.idle_dimmer._locked_at is not None
+    night_light.system_events.unlocked.emit()
+    assert night_light.idle_dimmer._locked_at is None

@@ -156,6 +156,28 @@ CLI_EXAMPLES = (
 )
 
 
+WINDOWS_SCREEN_SETTINGS_URL = "ms-settings:powersleep"
+
+
+def windows_timeout_note(dim_s: int | None, off_s: int | None, idle_minutes: int) -> str:
+    """What Windows' own screen timeout does beside "Dim displays when I'm
+    away" (winsystem.screen_timeouts, for the power source in use); "" when
+    Windows never dims or turns off the screen."""
+    from nightlight.brightness.idle_dim import MIN_DIMMED_S, WINDOWS_LEAD_S, duration
+
+    times = [(s, what) for s, what in ((dim_s, "dims the screen"), (off_s, "turns the screen off")) if s]
+    if not times:
+        return ""
+    first, what = min(times)
+    when = duration(first)
+    if idle_minutes * 60 >= first - WINDOWS_LEAD_S - MIN_DIMMED_S:  # as IdleDimmer.check: not worth dimming
+        return (f"Windows {what} after {when}, before {APP_NAME} would dim it at {idle_minutes} min, so {APP_NAME} "
+                "doesn't dim it. Choose a shorter time above, or a longer screen timeout in Windows")
+    return (f"Windows {what} after {when}. {APP_NAME} dims it first, and brings it back a few seconds before Windows "
+            "does, so the screen wakes at its usual brightness. Windows' screen timeout can be changed or turned off in "
+            "its settings")
+
+
 def changed_settings(config: AppConfig, saved: AppConfig) -> str:
     """Which settings differ, by page and name, for the log: "Night Light
     (night_temperature), General (theme)". Never their values: a city, app
@@ -224,9 +246,11 @@ class SettingsWindow(QWidget):
         pause_shortcuts: Callable[[bool], None] | None = None,
         check_updates: Callable[[], None] | None = None,
         show_welcome: Callable[[], None] | None = None,
+        screen_timeouts: Callable[[], tuple[int | None, int | None, int | None]] | None = None,
     ) -> None:
         super().__init__()
         self._controller = controller
+        self._screen_timeouts = screen_timeouts  # winsystem.screen_timeouts: Windows' own dim and off times
         # GDI name -> the warmest Windows accepted there (gamma backend), and
         # a display's name from its GDI name, for the Windows limit note.
         self._warmest = warmest or dict
@@ -701,6 +725,11 @@ class SettingsWindow(QWidget):
             away.add(SettingRow("Never dim while these apps are in front", "For apps that don't keep the screen on themselves, "
                                 "such as some media players and call apps", below=self.idle_exempt_apps)),
         )
+        # Windows' own screen timeout, beside it (_update_windows_timeout).
+        self.windows_timeout = QPushButton("Screen timeout…")
+        self.windows_timeout.setToolTip("Opens Windows' Screen and sleep settings")
+        self.windows_timeout.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(WINDOWS_SCREEN_SETTINGS_URL)))
+        self._windows_timeout_row = away.add(SettingRow("Windows' screen timeout", "", self.windows_timeout))
         layout.addWidget(away)
         return page
 
@@ -939,6 +968,19 @@ class SettingsWindow(QWidget):
         return AppConfig(night_light=night_light, general=general, brightness_schedule=self.schedule.config(),
                          displays=self.displays.prefs(), shortcuts=self.shortcut_editor.shortcuts())
 
+    def _update_windows_timeout(self) -> None:
+        """Read again each time: Windows' settings, or the power source, may
+        have changed while Settings was closed."""
+        note = ""
+        if self._screen_timeouts is not None and self.idle_dim.isChecked():
+            try:
+                dim, off, _locked = self._screen_timeouts()
+                note = windows_timeout_note(dim, off, self.idle_minutes.value())
+            except Exception:  # never in the way of Settings
+                log.debug("Could not read Windows' screen timeouts", exc_info=True)
+        self._windows_timeout_row.set_description(note)
+        self._away_card.set_row_visible(self._windows_timeout_row, bool(note))
+
     def _resume_from_banner(self) -> None:
         self._controller.clear_override("Settings")
 
@@ -966,6 +1008,7 @@ class SettingsWindow(QWidget):
             self._fit_to_screen()
         super().showEvent(event)
         self._draw_header_icon()  # on this screen, at its scaling
+        self._update_windows_timeout()
         # Opening, Qt gives focus back to the entry used last; the current one takes it.
         self._nav[self.current_page()].setFocus(Qt.FocusReason.OtherFocusReason)
 
@@ -1145,6 +1188,7 @@ class SettingsWindow(QWidget):
             field.setEnabled(self.idle_dim.isChecked())
         for row in self._idle_rows:
             self._away_card.set_row_visible(row, self.idle_dim.isChecked())
+        self._update_windows_timeout()
         self._update_status()
         self._update_schedule_status()
         self.refresh_shortcut_status()

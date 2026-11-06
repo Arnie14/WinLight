@@ -209,3 +209,168 @@ def test_releasing_stops_watching_for_good(dimmer):
     state["idle"] = 60 * 60
     dimmer.check()
     assert monitors.sent == sent  # nothing dims after quitting
+
+
+# --- Windows' own screen timeout ---------------------------------------------------------------
+
+
+def with_windows(dim, off):
+    """A dimmer (5 min, to 30%) beside Windows' power plan: it dims the screen
+    after `dim` seconds and turns it off after `off` (None: never)."""
+    from nightlight.brightness import idle_dim
+
+    state = {"idle": 0.0}
+    monitors, memory, gamma = FakeMonitors(), FakeMemory(), FakeGamma()
+    dimmer = IdleDimmer(monitors, memory, lambda: state["idle"], lambda: False, frozenset, gamma,
+                        windows_timeouts=lambda: (dim, off, None))
+    dimmer.configure(True, 5, 30)
+    return dimmer, monitors, state, idle_dim.WINDOWS_LEAD_S
+
+
+def test_dimming_is_undone_before_windows_turns_the_screen_off():
+    """A tester saw it: Windows turned the screen off with Winlight's dimming
+    on, brought it back at the dimmed level, and the laptop panel stayed dim
+    for seconds after waking (nothing reaches a display until it is detected
+    again). Undone just before, the screen goes dark, and comes back, at its
+    usual level; and it isn't dimmed again until there is input."""
+    dimmer, monitors, state, lead = with_windows(None, 900)
+    state["idle"] = 300
+    dimmer.check()
+    assert dimmer.dimmed and monitors.brightness["BOE0812"] == 30
+    state["idle"] = 900 - lead - 1
+    dimmer.check()
+    assert dimmer.dimmed  # not yet
+    state["idle"] = 900 - lead
+    dimmer.check()
+    assert not dimmer.dimmed and monitors.brightness["BOE0812"] == 60  # back before Windows turns it off
+    state["idle"] = 905
+    dimmer.check()
+    assert not dimmer.dimmed  # still away: not dimmed again over Windows' timeout
+    state["idle"] = 2  # back
+    dimmer.check()
+    state["idle"] = 300
+    dimmer.check()
+    assert dimmer.dimmed  # and the next time away, dimmed as usual
+    dimmer.configure(False, 5, 30)
+
+
+def test_windows_dimming_first_counts_too():
+    """A laptop's power plan dims the screen 15 s before turning it off (885
+    and 900 s on the test laptop): the earlier of the two is what counts."""
+    dimmer, monitors, state, lead = with_windows(885, 900)
+    state["idle"] = 300
+    dimmer.check()
+    state["idle"] = 885 - lead
+    dimmer.check()
+    assert not dimmer.dimmed
+    dimmer.configure(False, 5, 30)
+
+
+@pytest.mark.parametrize(("dim", "off"), [(None, 300), (None, 240), (None, 300 + 7), (290, None)])
+def test_where_windows_gets_there_first_winlight_doesnt_dim(dim, off):
+    """Dimming at 5 min a screen Windows dims or turns off at 5 min (or a few
+    seconds later) would only be undone at once."""
+    dimmer, monitors, state, _lead = with_windows(dim, off)
+    for state["idle"] in (300, 310, 400):
+        dimmer.check()
+    assert not dimmer.dimmed and monitors.sent == []
+    dimmer.configure(False, 5, 30)
+
+
+def test_with_no_windows_timeout_dimming_lasts_until_input():
+    dimmer, monitors, state, _lead = with_windows(None, None)
+    for state["idle"] in (300, 3600, 36000):
+        dimmer.check()
+    assert dimmer.dimmed
+    state["idle"] = 1
+    dimmer.check()
+    assert not dimmer.dimmed
+    dimmer.configure(False, 5, 30)
+
+
+def test_windows_timeouts_that_cant_be_read_change_nothing():
+    from nightlight.brightness.idle_dim import IdleDimmer
+
+    def broken():
+        raise OSError("powrprof")
+
+    state = {"idle": 300.0}
+    monitors, memory, gamma = FakeMonitors(), FakeMemory(), FakeGamma()
+    dimmer = IdleDimmer(monitors, memory, lambda: state["idle"], lambda: False, frozenset, gamma, windows_timeouts=broken)
+    dimmer.configure(True, 5, 30)
+    dimmer.check()
+    assert dimmer.dimmed
+    dimmer.configure(False, 5, 30)
+
+
+# --- The lock screen's own timeout ---------------------------------------------------------------
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def locked_dimmer(lock_off=60, off=None):
+    """A dimmer (5 min, to 30%); Windows turns the screen off `lock_off` s
+    after locking (Windows' default: 60), and after `off` unlocked."""
+    state, clock = {"idle": 0.0}, Clock()
+    monitors, memory, gamma = FakeMonitors(), FakeMemory(), FakeGamma()
+    dimmer = IdleDimmer(monitors, memory, lambda: state["idle"], lambda: False, frozenset, gamma,
+                        windows_timeouts=lambda: (None, off, lock_off), clock=clock)
+    dimmer.configure(True, 5, 30)
+    return dimmer, state, clock
+
+
+def wait(state, clock, seconds):
+    state["idle"] += seconds
+    clock.now += seconds
+
+
+def test_on_the_lock_screen_dimming_is_undone_before_windows_turns_the_screen_off():
+    """Locked, Windows turns the screen off a minute later (by default), not at
+    the power plan's time: the dimming is undone before that too."""
+    dimmer, state, clock = locked_dimmer()
+    state["idle"] = 300
+    dimmer.check()
+    assert dimmer.dimmed
+    dimmer.on_locked()
+    wait(state, clock, 50)
+    dimmer.check()
+    assert dimmer.dimmed  # 10 s left
+    wait(state, clock, 3)
+    dimmer.check()
+    assert not dimmer.dimmed  # 7 s left: back before the lock screen turns the screen off
+    dimmer.on_locked()  # Windows reports the lock again: still counted from the first
+    wait(state, clock, 60)
+    dimmer.check()
+    assert not dimmer.dimmed  # and not dimmed again until input
+    dimmer.configure(False, 5, 30)
+
+
+def test_locked_just_before_the_dimming_time_it_isnt_dimmed():
+    """Locked 4 min 30 s into idle: the lock screen turns the screen off 30 s
+    after the dimming would begin, too soon to be worth it."""
+    dimmer, state, clock = locked_dimmer()
+    state["idle"] = 270
+    dimmer.on_locked()
+    wait(state, clock, 30)
+    dimmer.check()
+    assert not dimmer.dimmed
+    dimmer.configure(False, 5, 30)
+
+
+def test_unlocked_the_lock_screens_timeout_no_longer_counts():
+    dimmer, state, clock = locked_dimmer()
+    dimmer.on_locked()
+    wait(state, clock, 10)
+    dimmer.on_unlocked()
+    state["idle"] = 300
+    dimmer.check()
+    wait(state, clock, 3600)
+    dimmer.check()
+    assert dimmer.dimmed  # no screen timeout in the plan, not locked: dimmed until input
+    dimmer.configure(False, 5, 30)

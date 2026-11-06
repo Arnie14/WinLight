@@ -8,7 +8,8 @@ PC, said for this PC rather than in general: when night light comes on
 it (with what to do for one that doesn't answer DDC/CI, and a word on HDR,
 where Windows doesn't let night light tint it); what here would clash with
 it, found read-only: Windows' own Night Light, other night light and
-brightness tools running; and two tips: Winlight's tray icon hidden under
+brightness tools running, Windows' automatic brightness (on a PC with a
+light sensor for it); and two tips: Winlight's tray icon hidden under
 ^, and starting at sign-in, where it doesn't yet. If nothing clashes, it
 says so in one line.
 """
@@ -35,6 +36,7 @@ from nightlight.ui.widgets import CHANNEL_CAPTIONS, SecondaryLabel
 
 SWITCHING_GUIDE_URL = f"{REPO_URL}/blob/main/docs/why-winlight.md#switching-to-winlight"
 WINDOWS_NIGHT_LIGHT_URL = "ms-settings:nightlight"
+WINDOWS_DISPLAY_URL = "ms-settings:display"  # its Brightness settings
 TASKBAR_SETTINGS_URL = "ms-settings:taskbar"
 WIDTH = 600
 _MARGIN = 28  # left and right
@@ -76,12 +78,19 @@ class Finding:
     url: str = ""  # what it opens
 
 
-def findings(windows_night_light: bool | None, programs: set[str]) -> list[Finding]:
+def findings(windows_night_light: bool | None, programs: set[str], automatic_brightness: bool | None = None) -> list[Finding]:
     """What on this PC would clash with Winlight, and what to do about it."""
     found = []
     if windows_night_light:
         found.append(Finding("Windows Night Light is on", "Turn it off: with both on, the screen is tinted twice.",
                              "Turn it off…", WINDOWS_NIGHT_LIGHT_URL))
+    if automatic_brightness:
+        # Only where it acts (winsystem.automatic_brightness_on): on, with a light sensor to follow.
+        found.append(Finding("Windows changes the brightness by itself",
+                             f"Its automatic brightness follows the room's light, over the levels {APP_NAME} sets (the "
+                             "schedule's and your own). Turn off \"Change brightness automatically when lighting "
+                             "changes\", and \"Change brightness based on content\" if it's there too.",
+                             "Turn it off…", WINDOWS_DISPLAY_URL))
     for name, patterns, advice in OTHER_TOOLS:
         if any(fnmatchcase(program, pattern) for program in programs for pattern in patterns):
             found.append(Finding(f"{name} is running", advice))
@@ -136,6 +145,7 @@ class WelcomeWindow(QWidget):
     def __init__(self, controller, config: Callable[[], AppConfig], monitors=None,
                  programs: Callable[[], set[str]] = set, open_settings: Callable[[], None] | None = None,
                  tray_hidden: Callable[[], bool | None] = lambda: None,
+                 automatic_brightness: Callable[[], bool | None] = lambda: None,
                  starts_at_sign_in: Callable[[], bool | None] = lambda: None,
                  start_at_sign_in: Callable[[bool], None] | None = None) -> None:
         super().__init__()
@@ -145,6 +155,7 @@ class WelcomeWindow(QWidget):
         self._programs = programs
         self._open_settings = open_settings
         self._tray_hidden = tray_hidden
+        self._automatic_brightness = automatic_brightness
         self._starts_at_sign_in = starts_at_sign_in
         self._start_at_sign_in = start_at_sign_in
         self._windows_night_light: bool | None = None
@@ -237,10 +248,10 @@ class WelcomeWindow(QWidget):
         self.displays_card = self._replace(self._displays_holder, self.displays_card, displays)
 
         card = Card()
-        found = findings(self._windows_night_light, self._programs())
+        found = findings(self._windows_night_light, self._programs(), self._automatic_brightness())
         if not found:
             card.add(SettingRow("Nothing here clashes with Winlight", "No other night light or brightness tool is "
-                                "running, and Windows Night Light is off."))
+                                "running, and Windows' own night light and automatic brightness are off."))
         hidden = self._tray_hidden()
         if hidden is None and self.isVisible() and not self._tray_recheck.isActive():
             self._tray_recheck.start()  # a new icon: Explorer may not have recorded it yet

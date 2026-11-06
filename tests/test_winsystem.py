@@ -123,6 +123,7 @@ def test_off_windows_these_report_nothing(monkeypatch):
     assert winsystem.running_apps() == []
     assert winsystem.windows_night_light_on() is None
     assert winsystem.tray_icon_hidden() is None
+    assert winsystem.ambient_light_sensor() is None and winsystem.automatic_brightness_on() is None
 
 
 class FakeIconRegistry:
@@ -411,3 +412,35 @@ def test_running_programs_include_windowless_ones():
     assert Path(sys.executable).name.lower() in programs  # this test's own Python, which has no window
     assert all(name == name.lower() for name in programs)
     assert len(programs) > 5
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows' power plan")
+def test_windows_screen_timeouts_are_read_as_powercfg_shows_them():
+    """Read only, from the power plan in use: the screen-off time matches
+    powercfg's value for mains or for battery (whichever is in use)."""
+    import os
+    import re
+    import subprocess
+    from pathlib import Path
+
+    assert not winsystem.layout_problems()  # SYSTEM_POWER_STATUS among them
+    dim, off, locked = winsystem.screen_timeouts()
+    assert all(value is None or (isinstance(value, int) and value > 0) for value in (dim, off, locked))
+    powercfg = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "powercfg.exe"
+    shown = subprocess.run([str(powercfg), "/query", "SCHEME_CURRENT", str(winsystem.GUID_VIDEO_SUBGROUP),
+                            str(winsystem.GUID_VIDEO_POWERDOWN_TIMEOUT)], capture_output=True, text=True, timeout=30).stdout
+    indexes = [int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{8})", shown)][-2:]  # mains, then battery
+    if len(indexes) == 2:  # a power plan with the setting (any language: the numbers, not the labels)
+        assert (off or 0) in indexes
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows' Sensor API and power plan")
+def test_automatic_brightness_is_asked_of_windows_without_changing_anything():
+    """Windows' Sensor API (COM, by hand) answers without crashing, here and on
+    CI's machines; without a light sensor, automatic brightness can't be on."""
+    sensor = winsystem.ambient_light_sensor()
+    automatic = winsystem.automatic_brightness_on()
+    assert sensor in (True, False, None) and automatic in (True, False, None)
+    if sensor is False:
+        assert automatic is False
+    assert winsystem.ambient_light_sensor() == sensor  # asked again: the same (COM set up and undone each time)
