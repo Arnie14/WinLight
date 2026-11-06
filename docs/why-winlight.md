@@ -104,7 +104,7 @@ A brightness tool may suit you better if you rely on:
    - GPU color settings (NVIDIA, AMD, Intel): leave them at their defaults.
    - A calibration loader, if you turn on keeping calibrations in Winlight: quit it, so only one puts the calibration back.
 
-   The installer's first page lists these too, and Winlight's welcome screen names any that are running: f.lux, LightBulb, Iris, CareUEyes, Twinkle Tray, Monitorian, ClickMonitorDDC, Dell Display Manager or LG OnScreen Control.
+   The installer's first page lists these too, and Winlight's welcome screen names Windows' automatic brightness if it's on, and any of these that are running: f.lux, LightBulb, Iris, CareUEyes, Twinkle Tray, Monitorian, ClickMonitorDDC, Dell Display Manager or LG OnScreen Control.
 3. **Carry over your settings.** They map closely:
 
 | You had | In Winlight |
